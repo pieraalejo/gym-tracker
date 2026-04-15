@@ -1,0 +1,131 @@
+/* ─── Google Fonts — must be before @tailwind ───────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Press+Start+2P&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Base reset ─────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: #0a0a0a;
+  color: #f0f0f0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior: none;
+}
+
+#root {
+  min-height: 100svh;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+/* ─── Scrollbar styling ──────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #0a0a0a; }
+::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
+
+/* ─── Bear animations ────────────────────────────────────────────────── */
+@keyframes bear-bounce {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-6px); }
+}
+
+@keyframes bear-sway {
+  0%, 100% { transform: rotate(-4deg); }
+  50%       { transform: rotate(4deg); }
+}
+
+@keyframes bear-pump {
+  0%, 100% { transform: translateY(0px) scale(1); }
+  50%       { transform: translateY(-3px) scale(1.04); }
+}
+
+@keyframes bear-idle {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-2px); }
+}
+
+.bear-bounce {
+  animation: bear-bounce 0.7s ease-in-out infinite;
+  filter: drop-shadow(0 0 10px #39ff1466) drop-shadow(0 0 20px #39ff1433);
+}
+
+.bear-sway {
+  animation: bear-sway 2.5s ease-in-out infinite;
+  transform-origin: center bottom;
+  opacity: 0.85;
+}
+
+.bear-pump {
+  animation: bear-pump 0.5s ease-in-out infinite;
+  filter: drop-shadow(0 0 6px #39ff1444);
+}
+
+.bear-idle {
+  animation: bear-idle 3s ease-in-out infinite;
+}
+
+/* ─── Neon glow utilities ────────────────────────────────────────────── */
+.neon-text {
+  color: #39ff14;
+  text-shadow: 0 0 8px #39ff1488, 0 0 20px #39ff1444;
+}
+
+.neon-border {
+  border-color: #39ff14;
+  box-shadow: 0 0 8px #39ff1433;
+}
+
+/* ─── Card base ──────────────────────────────────────────────────────── */
+.card {
+  background: #141414;
+  border: 1px solid #2a2a2a;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+/* ─── Input base ─────────────────────────────────────────────────────── */
+.input-base {
+  background: #1e1e1e;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  color: #f0f0f0;
+  padding: 10px 12px;
+  font-size: 14px;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.input-base:focus {
+  border-color: #39ff14;
+  box-shadow: 0 0 0 2px #39ff1422;
+}
+
+/* ─── Set complete animation ─────────────────────────────────────────── */
+@keyframes set-complete {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+.set-complete-anim {
+  animation: set-complete 0.25s ease-out;
+}
+
+/* ─── Page header ────────────────────────────────────────────────────── */
+.page-header {
+  padding: 16px 16px 8px;
+  border-bottom: 1px solid #1e1e1e;
+  background: #0a0a0a;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
