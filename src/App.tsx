@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -8,11 +9,48 @@ import BearPreview from './pages/BearPreview';
 import Calendar from './pages/Calendar';
 import Onboarding from './pages/Onboarding';
 import { useGymStore } from './store/gymStore';
+import { supabase } from './lib/supabase';
 
 function App() {
-  const userProfile = useGymStore((s) => s.userProfile);
+  const { loadUserData, resetStore, isLoading, userProfile, userId } = useGymStore();
+  const [authChecked, setAuthChecked] = useState(false);
 
-  if (!userProfile) {
+  useEffect(() => {
+    // Check existing session on mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        loadUserData(session.user.id).then(() => setAuthChecked(true));
+      } else {
+        setAuthChecked(true);
+      }
+    });
+
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'SIGNED_IN' && session?.user) {
+          await loadUserData(session.user.id);
+        } else if (event === 'SIGNED_OUT') {
+          resetStore();
+        }
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Show loading screen while checking auth or fetching data
+  if (!authChecked || isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
+        <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+        <p className="font-pixel text-textMuted" style={{ fontSize: '9px' }}>CARGANDO...</p>
+      </div>
+    );
+  }
+
+  // Show onboarding if not logged in OR logged in but profile not set up
+  if (!userId || !userProfile?.name) {
     return <Onboarding />;
   }
 

@@ -14,10 +14,31 @@ import type {
   BodyMeasurement,
 } from '../types';
 import { DEFAULT_EXERCISES, DAY_TYPE_PRIMARY_MUSCLE } from '../data/exercises';
+import {
+  loadAllUserData,
+  upsertProfileDb,
+  syncRoutineDb,
+  deleteRoutineDb,
+  syncWorkoutLogDb,
+  deleteWorkoutLogDb,
+  insertBodyMeasurementDb,
+  deleteBodyMeasurementDb,
+  upsertWeeklyPlanDayDb,
+} from '../lib/db';
 
 const genId = (): string => crypto.randomUUID();
 
+function sync(fn: () => Promise<void>) {
+  fn().catch((err) => console.error('[Supabase sync error]', err));
+}
+
 interface GymStore {
+  // Auth
+  userId: string | null;
+  isLoading: boolean;
+  loadUserData: (userId: string) => Promise<void>;
+  resetStore: () => void;
+
   // Profile
   userProfile: UserProfile | null;
   setUserProfile: (profile: UserProfile) => void;
@@ -28,35 +49,30 @@ interface GymStore {
   addBodyMeasurement: (m: Omit<BodyMeasurement, 'id'>) => void;
   deleteBodyMeasurement: (id: string) => void;
 
-  // Rest timer
-  restTimerDuration: number; // seconds
+  // Rest timer (persisted locally)
+  restTimerDuration: number;
   setRestTimerDuration: (s: number) => void;
 
+  // Exercises
   exercises: Exercise[];
-  routines: Routine[];
-  workoutLogs: WorkoutLog[];
-  activeWorkout: ActiveWorkout | null;
-  weeklyPlan: WeeklyPlan;
-
-  // Exercise actions
   addExercise: (exercise: Omit<Exercise, 'id' | 'isCustom'>) => void;
   updateExercise: (id: string, updates: Partial<Omit<Exercise, 'id'>>) => void;
   deleteExercise: (id: string) => void;
 
-  // Routine actions
+  // Routines
+  routines: Routine[];
   addRoutine: (routine: Omit<Routine, 'id' | 'createdAt'>) => void;
   updateRoutine: (id: string, updates: Partial<Omit<Routine, 'id' | 'createdAt'>>) => void;
   deleteRoutine: (id: string) => void;
 
-  // Workout log actions
+  // Workout logs
+  workoutLogs: WorkoutLog[];
   addWorkoutLog: (log: Omit<WorkoutLog, 'id'>) => string;
   updateWorkoutLog: (id: string, updates: Partial<Omit<WorkoutLog, 'id'>>) => void;
   deleteWorkoutLog: (id: string) => void;
 
-  // Weekly plan actions
-  setDayRoutine: (day: WeekDay, routineId: string | null) => void;
-
-  // Active workout actions
+  // Active workout
+  activeWorkout: ActiveWorkout | null;
   startWorkout: (routineId: string, exercises: ActiveWorkoutExercise[]) => void;
   updateActiveNote: (notes: string) => void;
   updateActiveExercise: (exerciseId: string, updates: Partial<ActiveWorkoutExercise>) => void;
@@ -65,38 +81,89 @@ interface GymStore {
   removeSetFromActiveExercise: (exerciseId: string, setNumber: number) => void;
   finishWorkout: (notes: string, mood?: 1 | 2 | 3 | 4 | 5) => string | null;
   cancelWorkout: () => void;
+
+  // Weekly plan
+  weeklyPlan: WeeklyPlan;
+  setDayRoutine: (day: WeekDay, routineId: string | null) => void;
 }
 
 export const useGymStore = create<GymStore>()(
   persist(
     (set, get) => ({
+      userId: null,
+      isLoading: false,
+
+      loadUserData: async (userId: string) => {
+        set({ isLoading: true, userId });
+        try {
+          const { profile, routines, workoutLogs, bodyMeasurements, weeklyPlan } =
+            await loadAllUserData(userId);
+          set({
+            userProfile: profile,
+            routines,
+            workoutLogs,
+            bodyMeasurements,
+            weeklyPlan,
+            isLoading: false,
+          });
+        } catch (err) {
+          console.error('Failed to load user data:', err);
+          set({ isLoading: false });
+        }
+      },
+
+      resetStore: () =>
+        set({
+          userId: null,
+          userProfile: null,
+          routines: [],
+          workoutLogs: [],
+          bodyMeasurements: [],
+          weeklyPlan: {},
+          activeWorkout: null,
+          isLoading: false,
+          exercises: DEFAULT_EXERCISES,
+        }),
+
+      // ── Profile ──────────────────────────────────────────────────────────
       userProfile: null,
-      setUserProfile: (profile) => set({ userProfile: profile }),
-      updateUserProfile: (updates) =>
+
+      setUserProfile: (profile) => {
+        set({ userProfile: profile });
+        const userId = get().userId;
+        if (userId) sync(() => upsertProfileDb(userId, profile));
+      },
+
+      updateUserProfile: (updates) => {
         set((state) => ({
           userProfile: state.userProfile ? { ...state.userProfile, ...updates } : null,
-        })),
-
-      bodyMeasurements: [],
-      addBodyMeasurement: (m) => {
-        const id = genId();
-        set((state) => ({
-          bodyMeasurements: [...state.bodyMeasurements, { ...m, id }],
         }));
+        const userId = get().userId;
+        const profile = get().userProfile;
+        if (userId && profile) sync(() => upsertProfileDb(userId, profile));
       },
-      deleteBodyMeasurement: (id) =>
-        set((state) => ({
-          bodyMeasurements: state.bodyMeasurements.filter((m) => m.id !== id),
-        })),
 
+      // ── Body measurements ─────────────────────────────────────────────────
+      bodyMeasurements: [],
+
+      addBodyMeasurement: (m) => {
+        const measurement: BodyMeasurement = { ...m, id: genId() };
+        set((state) => ({ bodyMeasurements: [...state.bodyMeasurements, measurement] }));
+        const userId = get().userId;
+        if (userId) sync(() => insertBodyMeasurementDb(userId, measurement));
+      },
+
+      deleteBodyMeasurement: (id) => {
+        set((state) => ({ bodyMeasurements: state.bodyMeasurements.filter((m) => m.id !== id) }));
+        sync(() => deleteBodyMeasurementDb(id));
+      },
+
+      // ── Rest timer ────────────────────────────────────────────────────────
       restTimerDuration: 90,
       setRestTimerDuration: (s) => set({ restTimerDuration: s }),
 
+      // ── Exercises ─────────────────────────────────────────────────────────
       exercises: DEFAULT_EXERCISES,
-      routines: [],
-      workoutLogs: [],
-      activeWorkout: null,
-      weeklyPlan: {},
 
       addExercise: (exercise) =>
         set((state) => ({
@@ -113,29 +180,39 @@ export const useGymStore = create<GymStore>()(
           exercises: state.exercises.filter((e) => !(e.id === id && e.isCustom)),
         })),
 
-      addRoutine: (routine) =>
-        set((state) => ({
-          routines: [
-            ...state.routines,
-            { ...routine, id: genId(), createdAt: new Date().toISOString() },
-          ],
-        })),
+      // ── Routines ──────────────────────────────────────────────────────────
+      routines: [],
 
-      updateRoutine: (id, updates) =>
+      addRoutine: (routine) => {
+        const newRoutine: Routine = { ...routine, id: genId(), createdAt: new Date().toISOString() };
+        set((state) => ({ routines: [...state.routines, newRoutine] }));
+        const userId = get().userId;
+        if (userId) sync(() => syncRoutineDb(userId, newRoutine));
+      },
+
+      updateRoutine: (id, updates) => {
         set((state) => ({
           routines: state.routines.map((r) => (r.id === id ? { ...r, ...updates } : r)),
-        })),
+        }));
+        const userId = get().userId;
+        const routine = get().routines.find((r) => r.id === id);
+        if (userId && routine) sync(() => syncRoutineDb(userId, routine));
+      },
 
-      deleteRoutine: (id) =>
-        set((state) => ({
-          routines: state.routines.filter((r) => r.id !== id),
-        })),
+      deleteRoutine: (id) => {
+        set((state) => ({ routines: state.routines.filter((r) => r.id !== id) }));
+        sync(() => deleteRoutineDb(id));
+      },
+
+      // ── Workout logs ──────────────────────────────────────────────────────
+      workoutLogs: [],
 
       addWorkoutLog: (log) => {
         const id = genId();
-        set((state) => ({
-          workoutLogs: [...state.workoutLogs, { ...log, id }],
-        }));
+        const newLog: WorkoutLog = { ...log, id };
+        set((state) => ({ workoutLogs: [...state.workoutLogs, newLog] }));
+        const userId = get().userId;
+        if (userId) sync(() => syncWorkoutLogDb(userId, newLog));
         return id;
       },
 
@@ -144,10 +221,13 @@ export const useGymStore = create<GymStore>()(
           workoutLogs: state.workoutLogs.map((l) => (l.id === id ? { ...l, ...updates } : l)),
         })),
 
-      deleteWorkoutLog: (id) =>
-        set((state) => ({
-          workoutLogs: state.workoutLogs.filter((l) => l.id !== id),
-        })),
+      deleteWorkoutLog: (id) => {
+        set((state) => ({ workoutLogs: state.workoutLogs.filter((l) => l.id !== id) }));
+        sync(() => deleteWorkoutLogDb(id));
+      },
+
+      // ── Active workout ────────────────────────────────────────────────────
+      activeWorkout: null,
 
       startWorkout: (routineId, exercises) =>
         set({
@@ -227,8 +307,7 @@ export const useGymStore = create<GymStore>()(
               exercises: state.activeWorkout.exercises.map((e) => {
                 if (e.exerciseId !== exerciseId) return e;
                 const filtered = e.sets.filter((s) => s.setNumber !== setNumber);
-                const renumbered = filtered.map((s, i) => ({ ...s, setNumber: i + 1 }));
-                return { ...e, sets: renumbered };
+                return { ...e, sets: filtered.map((s, i) => ({ ...s, setNumber: i + 1 })) };
               }),
             },
           };
@@ -249,28 +328,36 @@ export const useGymStore = create<GymStore>()(
           startTime: activeWorkout.startTime,
           endTime: new Date().toISOString(),
         };
-        set((state) => ({
-          workoutLogs: [...state.workoutLogs, log],
-          activeWorkout: null,
-        }));
+        set((state) => ({ workoutLogs: [...state.workoutLogs, log], activeWorkout: null }));
+        const userId = get().userId;
+        if (userId) sync(() => syncWorkoutLogDb(userId, log));
         return id;
       },
 
       cancelWorkout: () => set({ activeWorkout: null }),
 
-      setDayRoutine: (day, routineId) =>
+      // ── Weekly plan ───────────────────────────────────────────────────────
+      weeklyPlan: {},
+
+      setDayRoutine: (day, routineId) => {
         set((state) => {
           const plan = { ...state.weeklyPlan };
-          if (routineId === null) {
-            delete plan[day];
-          } else {
-            plan[day] = routineId;
-          }
+          if (routineId === null) delete plan[day];
+          else plan[day] = routineId;
           return { weeklyPlan: plan };
-        }),
+        });
+        const userId = get().userId;
+        if (userId) sync(() => upsertWeeklyPlanDayDb(userId, day, routineId));
+      },
     }),
     {
-      name: 'gym-tracker-v1',
+      name: 'gym-tracker-v3',
+      // Only persist active workout and local preferences
+      partialize: (state) => ({
+        activeWorkout: state.activeWorkout,
+        restTimerDuration: state.restTimerDuration,
+        exercises: state.exercises, // keep custom exercises local
+      }),
     }
   )
 );
@@ -312,24 +399,19 @@ export const getBearState = (
 
 export const getCurrentStreak = (workoutLogs: WorkoutLog[]): number => {
   if (workoutLogs.length === 0) return 0;
-  const uniqueDates = [
-    ...new Set(workoutLogs.map((l) => l.date)),
-  ].sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-
+  const uniqueDates = [...new Set(workoutLogs.map((l) => l.date))].sort(
+    (a, b) => new Date(b).getTime() - new Date(a).getTime()
+  );
   let streak = 0;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-
   for (let i = 0; i < uniqueDates.length; i++) {
     const d = new Date(uniqueDates[i]);
     d.setHours(0, 0, 0, 0);
     const expected = new Date(today);
     expected.setDate(today.getDate() - i);
-    if (d.getTime() === expected.getTime()) {
-      streak++;
-    } else {
-      break;
-    }
+    if (d.getTime() === expected.getTime()) streak++;
+    else break;
   }
   return streak;
 };
