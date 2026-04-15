@@ -16,22 +16,17 @@ function App() {
   const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
-    // Check existing session on mount
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        loadUserData(session.user.id).then(() => setAuthChecked(true));
-      } else {
-        setAuthChecked(true);
-      }
-    });
-
-    // Listen for auth state changes
+    // Use onAuthStateChange exclusively — it fires INITIAL_SESSION on mount
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (event === 'SIGNED_IN' && session?.user) {
+        if (session?.user) {
           await loadUserData(session.user.id);
         } else if (event === 'SIGNED_OUT') {
           resetStore();
+        }
+        // Mark auth as resolved after the initial state is known
+        if (event === 'INITIAL_SESSION') {
+          setAuthChecked(true);
         }
       }
     );
@@ -39,7 +34,6 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Show loading screen while checking auth or fetching data
   if (!authChecked || isLoading) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
@@ -49,7 +43,6 @@ function App() {
     );
   }
 
-  // Show onboarding if not logged in OR logged in but profile not set up
   if (!userId || !userProfile?.name) {
     return <Onboarding />;
   }
