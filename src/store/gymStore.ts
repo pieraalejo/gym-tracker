@@ -97,7 +97,7 @@ export const useGymStore = create<GymStore>()(
         set({ isLoading: true, userId });
         try {
           const timeout = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('timeout')), 8000)
+            setTimeout(() => reject(new Error('timeout')), 25000)
           );
           const load = loadAllUserData(userId);
           const { profile, routines, workoutLogs, bodyMeasurements, weeklyPlan } =

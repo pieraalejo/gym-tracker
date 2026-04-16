@@ -38,8 +38,8 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Block only while: auth state unknown, OR user is authenticated but profile still loading
-  if (!authChecked || (userId && isLoading)) {
+  // Show spinner while: auth unknown, OR user is authenticated but profile still loading
+  if (!authChecked || (userId && !userProfile?.name && isLoading)) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
         <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
