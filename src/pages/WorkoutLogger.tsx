@@ -1,12 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  Check, X, Plus, Minus, ChevronDown, ChevronUp, Dumbbell, Flag, MessageSquare
+  Check, X, Plus, Minus, ChevronDown, ChevronUp, Dumbbell, Flag, MessageSquare, Shuffle,
 } from 'lucide-react';
 import { useGymStore } from '../store/gymStore';
-import { DEFAULT_EXERCISES } from '../data/exercises';
+import {
+  DEFAULT_EXERCISES,
+  MUSCLE_GROUP_LABELS,
+  MUSCLE_GROUP_ORDER,
+} from '../data/exercises';
 import { RestTimer } from '../components/RestTimer';
-import type { SetLog } from '../types';
+import type { SetLog, MuscleGroup } from '../types';
 
 type Phase = 'select' | 'workout' | 'complete';
 
@@ -21,6 +25,7 @@ export default function WorkoutLogger() {
     routines, exercises, activeWorkout,
     startWorkout, updateActiveSet, updateActiveExercise,
     addSetToActiveExercise, removeSetFromActiveExercise,
+    addExerciseToActiveWorkout, swapActiveExercise,
     finishWorkout, cancelWorkout,
     restTimerDuration,
   } = useGymStore();
@@ -33,6 +38,17 @@ export default function WorkoutLogger() {
   const [mood, setMood] = useState<1 | 2 | 3 | 4 | 5>(3);
   const [elapsed, setElapsed] = useState('');
   const [showRestTimer, setShowRestTimer] = useState(false);
+
+  // Swap alternatives modal
+  const [swapForExId, setSwapForExId] = useState<string | null>(null);
+
+  // Extra exercise modal
+  const [showExtraModal, setShowExtraModal] = useState(false);
+  const [extraMuscle, setExtraMuscle] = useState<MuscleGroup>('pecho');
+  const [extraExercise, setExtraExercise] = useState('');
+  const [extraSets, setExtraSets] = useState('3');
+  const [extraReps, setExtraReps] = useState('12');
+  const [extraWeight, setExtraWeight] = useState('0');
 
   useEffect(() => {
     if (activeWorkout) setPhase('workout');
@@ -91,11 +107,49 @@ export default function WorkoutLogger() {
   function handleSetToggle(exerciseId: string, set: SetLog) {
     const newCompleted = !set.completed;
     updateActiveSet(exerciseId, set.setNumber, { completed: newCompleted });
-    // Show rest timer when completing a set (not uncompleting)
     if (newCompleted && restTimerDuration > 0) {
       setShowRestTimer(true);
     }
   }
+
+  function handleAddExtra() {
+    if (!extraExercise) return;
+    addExerciseToActiveWorkout(
+      extraExercise,
+      parseInt(extraSets) || 3,
+      parseInt(extraReps) || 12,
+      parseFloat(extraWeight) || 0,
+    );
+    setShowExtraModal(false);
+    setExtraExercise('');
+    setExtraSets('3');
+    setExtraReps('12');
+    setExtraWeight('0');
+  }
+
+  // Datos de alternativas del ejercicio actual (desde la rutina)
+  function getAlternatives(exerciseId: string): string[] {
+    if (!activeWorkout) return [];
+    const routine = routines.find((r) => r.id === activeWorkout.routineId);
+    if (!routine) return [];
+    const re = routine.exercises.find((e) => e.exerciseId === exerciseId);
+    // También buscar si el ejercicio activo es una alternativa del slot original
+    if (re) return re.alternatives ?? [];
+    // Si el ejerciseId fue swapeado, buscar el slot original
+    for (const slot of routine.exercises) {
+      if ((slot.alternatives ?? []).includes(exerciseId)) {
+        const others = [slot.exerciseId, ...(slot.alternatives ?? []).filter((a) => a !== exerciseId)];
+        return others;
+      }
+    }
+    return [];
+  }
+
+  // Ejercicios extra filtrados (no están ya en el workout)
+  const extraFiltered = allExercises.filter(
+    (e) => e.muscleGroup === extraMuscle &&
+      !activeWorkout?.exercises.some((ae) => ae.exerciseId === e.id)
+  );
 
   // ── SELECT PHASE ──────────────────────────────────────────────────────────
   if (phase === 'select') {
@@ -271,6 +325,157 @@ export default function WorkoutLogger() {
         />
       )}
 
+      {/* Modal de swap alternativas */}
+      {swapForExId && (() => {
+        const alts = getAlternatives(swapForExId);
+        return (
+          <div
+            className="fixed inset-0 z-50 flex flex-col justify-end"
+            onClick={() => setSwapForExId(null)}
+          >
+            <div
+              className="bg-surface border-t border-border rounded-t-2xl p-5 space-y-3"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className="font-pixel text-accent text-center" style={{ fontSize: '10px' }}>
+                CAMBIAR EJERCICIO
+              </p>
+              <p className="text-textMuted text-xs text-center mb-2">
+                Elegí qué hiciste hoy
+              </p>
+
+              {/* Opción actual */}
+              <button
+                onClick={() => setSwapForExId(null)}
+                className="w-full flex items-center justify-between p-3 rounded-xl border border-accent bg-accent/10 text-accent text-sm"
+              >
+                <span>{getExName(swapForExId)}</span>
+                <Check size={16} />
+              </button>
+
+              {/* Alternativas */}
+              {alts.map((altId) => (
+                <button
+                  key={altId}
+                  onClick={() => {
+                    swapActiveExercise(swapForExId, altId);
+                    setSwapForExId(null);
+                    if (expandedEx === swapForExId) setExpandedEx(altId);
+                  }}
+                  className="w-full flex items-center p-3 rounded-xl border border-border bg-surface2 text-textPrimary text-sm text-left"
+                >
+                  <Shuffle size={14} className="text-accent mr-2 flex-shrink-0" />
+                  {getExName(altId)}
+                </button>
+              ))}
+
+              <button
+                onClick={() => setSwapForExId(null)}
+                className="w-full text-textMuted text-xs py-2"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Modal de ejercicio extra */}
+      {showExtraModal && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col justify-end"
+          onClick={() => setShowExtraModal(false)}
+        >
+          <div
+            className="bg-surface border-t border-border rounded-t-2xl p-5 space-y-3 max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="font-pixel text-accent text-center" style={{ fontSize: '10px' }}>
+              EJERCICIO EXTRA
+            </p>
+            <p className="text-textMuted text-xs text-center">
+              Se suma a esta sesión sin modificar tu rutina
+            </p>
+
+            <div>
+              <label className="text-xs text-textMuted mb-1 block">Grupo muscular</label>
+              <select
+                className="input-base"
+                value={extraMuscle}
+                onChange={(e) => {
+                  setExtraMuscle(e.target.value as MuscleGroup);
+                  setExtraExercise('');
+                }}
+              >
+                {MUSCLE_GROUP_ORDER.map((mg) => (
+                  <option key={mg} value={mg}>{MUSCLE_GROUP_LABELS[mg]}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs text-textMuted mb-1 block">Ejercicio</label>
+              <select
+                className="input-base"
+                value={extraExercise}
+                onChange={(e) => setExtraExercise(e.target.value)}
+              >
+                <option value="">— Seleccioná un ejercicio —</option>
+                {extraFiltered.map((ex) => (
+                  <option key={ex.id} value={ex.id}>{ex.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-xs text-textMuted mb-1 block">Series</label>
+                <input
+                  type="number" min="1" max="20"
+                  className="input-base text-center"
+                  value={extraSets}
+                  onChange={(e) => setExtraSets(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-textMuted mb-1 block">Reps</label>
+                <input
+                  type="number" min="1" max="100"
+                  className="input-base text-center"
+                  value={extraReps}
+                  onChange={(e) => setExtraReps(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-textMuted mb-1 block">Peso (kg)</label>
+                <input
+                  type="number" min="0" step="0.5"
+                  className="input-base text-center"
+                  value={extraWeight}
+                  onChange={(e) => setExtraWeight(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={handleAddExtra}
+              disabled={!extraExercise}
+              className="w-full bg-accent text-background font-pixel py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95 transition-transform"
+              style={{ fontSize: '9px' }}
+            >
+              <Plus size={14} />
+              AGREGAR A LA SESIÓN
+            </button>
+            <button
+              onClick={() => setShowExtraModal(false)}
+              className="w-full text-textMuted text-xs py-2"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="page-header">
         <div className="flex items-center justify-between">
@@ -317,13 +522,15 @@ export default function WorkoutLogger() {
           const completedSets = exLog.sets.filter((s) => s.completed).length;
           const totalEx = exLog.sets.length;
           const isAllDone = completedSets === totalEx && totalEx > 0;
+          const alternatives = getAlternatives(exLog.exerciseId);
+          const hasAlts = alternatives.length > 0;
 
           return (
             <div
               key={exLog.exerciseId}
               className={`card transition-all ${exLog.skipped ? 'opacity-50' : ''} ${
                 isAllDone ? 'border-accent/40' : ''
-              }`}
+              } ${exLog.isExtra ? 'border-dashed border-accent/30' : ''}`}
             >
               {/* Exercise header */}
               <button
@@ -339,16 +546,36 @@ export default function WorkoutLogger() {
                   {isAllDone ? <Check size={14} /> : exIdx + 1}
                 </div>
                 <div className="flex-1 text-left">
-                  <p className="text-textPrimary font-medium text-sm">
-                    {getExName(exLog.exerciseId)}
-                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-textPrimary font-medium text-sm">
+                      {getExName(exLog.exerciseId)}
+                    </p>
+                    {exLog.isExtra && (
+                      <span className="text-xs bg-accent/10 text-accent px-1.5 py-0.5 rounded font-pixel" style={{ fontSize: '7px' }}>
+                        EXTRA
+                      </span>
+                    )}
+                  </div>
                   <p className="text-textMuted text-xs">
                     {completedSets}/{totalEx} series
                     {routine && ` · objetivo: ${routine.targetReps} reps`}
                     {routine?.targetWeight && routine.targetWeight > 0 && ` @ ${routine.targetWeight}kg`}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
+                  {/* Botón swap si tiene alternativas */}
+                  {hasAlts && !exLog.isExtra && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSwapForExId(exLog.exerciseId);
+                      }}
+                      className="p-1.5 text-accent/70 hover:text-accent transition-colors"
+                      title="Cambiar por alternativa"
+                    >
+                      <Shuffle size={15} />
+                    </button>
+                  )}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -434,10 +661,19 @@ export default function WorkoutLogger() {
           );
         })}
 
+        {/* Botón ejercicio extra */}
+        <button
+          onClick={() => setShowExtraModal(true)}
+          className="w-full text-accent text-xs flex items-center justify-center gap-1.5 py-3 border border-dashed border-accent/30 rounded-xl mt-1"
+        >
+          <Plus size={14} />
+          <span className="font-pixel" style={{ fontSize: '9px' }}>AGREGAR EJERCICIO EXTRA</span>
+        </button>
+
         {/* Finish button */}
         <button
           onClick={() => setPhase('complete')}
-          className="w-full bg-accent text-background font-pixel py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-transform mt-4"
+          className="w-full bg-accent text-background font-pixel py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-transform mt-2"
           style={{ fontSize: '11px' }}
         >
           <Flag size={16} />
@@ -460,13 +696,11 @@ interface SetRowProps {
 
 function SetRow({ set, onRepsChange, onWeightChange, onToggle, onNotesChange, onRemove }: SetRowProps) {
   const [showNote, setShowNote] = useState(!!set.notes);
-  // String state for inputs to avoid leading-zero issues on mobile
   const [repsStr, setRepsStr] = useState(set.reps === 0 ? '' : String(set.reps));
   const [weightStr, setWeightStr] = useState(set.weight === 0 ? '' : String(set.weight));
   const prevReps = useRef(set.reps);
   const prevWeight = useRef(set.weight);
 
-  // Sync string state only when value changes from outside (not while user is typing)
   useEffect(() => {
     if (set.reps !== prevReps.current) {
       setRepsStr(set.reps === 0 ? '' : String(set.reps));
@@ -499,7 +733,7 @@ function SetRow({ set, onRepsChange, onWeightChange, onToggle, onNotesChange, on
           )}
         </div>
 
-        {/* Reps — text input to avoid leading zeros on mobile */}
+        {/* Reps */}
         <input
           type="text"
           inputMode="numeric"
@@ -517,7 +751,7 @@ function SetRow({ set, onRepsChange, onWeightChange, onToggle, onNotesChange, on
           }}
         />
 
-        {/* Weight — text input to avoid leading zeros on mobile */}
+        {/* Weight */}
         <input
           type="text"
           inputMode="decimal"

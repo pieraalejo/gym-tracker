@@ -17,7 +17,15 @@ export type DayType =
   | 'lower'
   | 'full'
   | 'cardio'
-  | 'custom';
+  | 'custom'
+  | 'musculo_pecho'
+  | 'musculo_espalda'
+  | 'musculo_hombros'
+  | 'musculo_biceps'
+  | 'musculo_triceps'
+  | 'musculo_piernas'
+  | 'musculo_gluteos'
+  | 'musculo_abdomen';
 
 export interface Exercise {
   id: string;
@@ -32,6 +40,7 @@ export interface RoutineExercise {
   targetReps: number;
   targetWeight: number;
   notes?: string;
+  alternatives?: string[]; // IDs de ejercicios alternativos para este slot
 }
 
 export interface Routine {
@@ -73,6 +82,7 @@ export interface ExerciseLog {
   sets: SetLog[];
   notes: string;
   skipped: boolean;
+  isExtra?: boolean; // true si fue agregado durante el entreno (no estaba en la rutina)
 }
 
 export interface WorkoutLog {
@@ -92,6 +102,7 @@ export interface ActiveWorkoutExercise {
   sets: SetLog[];
   notes: string;
   skipped: boolean;
+  isExtra?: boolean; // true si fue agregado durante el entreno
 }
 
 export interface ActiveWorkout {

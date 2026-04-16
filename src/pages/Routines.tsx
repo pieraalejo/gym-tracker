@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  Plus, Trash2, ChevronDown, ChevronUp, Edit2, X, Check,
+  Plus, Trash2, ChevronDown, ChevronUp, Edit2, X, Check, Shuffle,
 } from 'lucide-react';
 import { useGymStore } from '../store/gymStore';
 import {
@@ -26,6 +26,22 @@ const EMPTY_FORM: RoutineForm = {
   exercises: [],
 };
 
+// Tipos de día agrupados para la UI
+const DAY_TYPE_GROUPS: { label: string; types: DayType[] }[] = [
+  {
+    label: 'COMBINADOS',
+    types: ['push', 'pull', 'legs', 'upper', 'lower', 'full', 'cardio', 'custom'],
+  },
+  {
+    label: 'POR MÚSCULO',
+    types: [
+      'musculo_pecho', 'musculo_espalda', 'musculo_hombros',
+      'musculo_biceps', 'musculo_triceps', 'musculo_piernas',
+      'musculo_gluteos', 'musculo_abdomen',
+    ],
+  },
+];
+
 export default function Routines() {
   const { routines, exercises, addRoutine, updateRoutine, deleteRoutine } = useGymStore();
 
@@ -43,9 +59,15 @@ export default function Routines() {
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [customExName, setCustomExName] = useState('');
 
+  // Alternatives picker state
+  const [addingAltFor, setAddingAltFor] = useState<string | null>(null); // exerciseId al que se agrega alt
+  const [altPickMuscle, setAltPickMuscle] = useState<MuscleGroup>('pecho');
+  const [altPickExercise, setAltPickExercise] = useState<string>('');
+
   // All exercises (default + custom)
   const allExercises = [...DEFAULT_EXERCISES, ...exercises.filter((e) => e.isCustom)];
   const filteredExercises = allExercises.filter((e) => e.muscleGroup === pickMuscle);
+  const altFilteredExercises = allExercises.filter((e) => e.muscleGroup === altPickMuscle);
 
   function openCreate() {
     setForm(EMPTY_FORM);
@@ -79,10 +101,8 @@ export default function Routines() {
     let exId = pickExercise;
 
     if (showCustomInput && customExName.trim()) {
-      // Add custom exercise to store and use its id
       const { addExercise } = useGymStore.getState();
       addExercise({ name: customExName.trim(), muscleGroup: pickMuscle });
-      // We'll get the id from the store after the add
       const updated = useGymStore.getState().exercises;
       const newEx = updated[updated.length - 1];
       exId = newEx.id;
@@ -104,6 +124,7 @@ export default function Routines() {
           targetSets: parseInt(pickSets) || 3,
           targetReps: parseInt(pickReps) || 12,
           targetWeight: parseFloat(pickWeight) || 0,
+          alternatives: [],
         },
       ],
     }));
@@ -122,6 +143,32 @@ export default function Routines() {
       ...f,
       exercises: f.exercises.map((e) =>
         e.exerciseId === exerciseId ? { ...e, [field]: value } : e
+      ),
+    }));
+  }
+
+  function addAlternativeToExercise(exerciseId: string, altId: string) {
+    if (!altId || altId === exerciseId) return;
+    setForm((f) => ({
+      ...f,
+      exercises: f.exercises.map((e) => {
+        if (e.exerciseId !== exerciseId) return e;
+        const current = e.alternatives ?? [];
+        if (current.includes(altId)) return e;
+        return { ...e, alternatives: [...current, altId] };
+      }),
+    }));
+    setAltPickExercise('');
+    setAddingAltFor(null);
+  }
+
+  function removeAlternative(exerciseId: string, altId: string) {
+    setForm((f) => ({
+      ...f,
+      exercises: f.exercises.map((e) =>
+        e.exerciseId === exerciseId
+          ? { ...e, alternatives: (e.alternatives ?? []).filter((a) => a !== altId) }
+          : e
       ),
     }));
   }
@@ -213,13 +260,28 @@ export default function Routines() {
                   {isExpanded && r.exercises.length > 0 && (
                     <div className="mt-3 pt-3 border-t border-border space-y-2">
                       {r.exercises.map((re, idx) => (
-                        <div key={re.exerciseId} className="flex items-center gap-2 text-sm">
-                          <span className="text-textMuted text-xs w-5">{idx + 1}.</span>
-                          <span className="flex-1 text-textPrimary truncate">{getExName(re.exerciseId)}</span>
-                          <span className="text-textMuted text-xs whitespace-nowrap">
-                            {re.targetSets}×{re.targetReps}
-                            {re.targetWeight > 0 && ` @ ${re.targetWeight}kg`}
-                          </span>
+                        <div key={re.exerciseId}>
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="text-textMuted text-xs w-5">{idx + 1}.</span>
+                            <span className="flex-1 text-textPrimary truncate">{getExName(re.exerciseId)}</span>
+                            <span className="text-textMuted text-xs whitespace-nowrap">
+                              {re.targetSets}×{re.targetReps}
+                              {re.targetWeight > 0 && ` @ ${re.targetWeight}kg`}
+                            </span>
+                          </div>
+                          {re.alternatives && re.alternatives.length > 0 && (
+                            <div className="ml-5 mt-1 flex flex-wrap gap-1">
+                              {re.alternatives.map((altId) => (
+                                <span
+                                  key={altId}
+                                  className="text-xs bg-surface2 text-textMuted px-2 py-0.5 rounded-full flex items-center gap-1"
+                                >
+                                  <Shuffle size={9} className="text-accent" />
+                                  {getExName(altId).split(' ').slice(0, 3).join(' ')}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -268,30 +330,37 @@ export default function Routines() {
           />
         </div>
 
-        {/* Day type */}
+        {/* Day type — agrupado */}
         <div>
           <label className="block text-textMuted text-xs font-pixel mb-2" style={{ fontSize: '8px' }}>
             TIPO DE DÍA
           </label>
-          <div className="grid grid-cols-2 gap-2">
-            {(Object.keys(DAY_TYPE_LABELS) as DayType[]).map((dt) => (
-              <button
-                key={dt}
-                onClick={() => setForm((f) => ({ ...f, dayType: dt }))}
-                className={`py-2 px-3 rounded-lg text-xs border transition-all text-left ${
-                  form.dayType === dt
-                    ? 'border-accent bg-accent/10 text-accent'
-                    : 'border-border bg-surface2 text-textMuted'
-                }`}
-              >
-                <span
-                  className="w-2 h-2 rounded-full inline-block mr-1.5"
-                  style={{ backgroundColor: DAY_TYPE_COLORS[dt] }}
-                />
-                {DAY_TYPE_LABELS[dt].split('—')[0].trim()}
-              </button>
-            ))}
-          </div>
+          {DAY_TYPE_GROUPS.map((group) => (
+            <div key={group.label} className="mb-3">
+              <p className="text-textMuted text-xs mb-1.5 font-pixel" style={{ fontSize: '7px' }}>
+                {group.label}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {group.types.map((dt) => (
+                  <button
+                    key={dt}
+                    onClick={() => setForm((f) => ({ ...f, dayType: dt }))}
+                    className={`py-2 px-3 rounded-lg text-xs border transition-all text-left ${
+                      form.dayType === dt
+                        ? 'border-accent bg-accent/10 text-accent'
+                        : 'border-border bg-surface2 text-textMuted'
+                    }`}
+                  >
+                    <span
+                      className="w-2 h-2 rounded-full inline-block mr-1.5"
+                      style={{ backgroundColor: DAY_TYPE_COLORS[dt] }}
+                    />
+                    {DAY_TYPE_LABELS[dt].split('—')[0].trim()}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* Exercise picker */}
@@ -414,7 +483,7 @@ export default function Routines() {
             <p className="font-pixel text-textMuted mb-2" style={{ fontSize: '8px' }}>
               EJERCICIOS EN LA RUTINA ({form.exercises.length})
             </p>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {form.exercises.map((re, idx) => (
                 <div key={re.exerciseId} className="card flex items-start gap-3">
                   <span className="text-textMuted text-xs mt-1 w-5">{idx + 1}.</span>
@@ -442,6 +511,88 @@ export default function Routines() {
                           />
                         </div>
                       ))}
+                    </div>
+
+                    {/* Alternatives */}
+                    <div className="mt-2">
+                      <p className="text-xs text-textMuted mb-1 flex items-center gap-1">
+                        <Shuffle size={10} className="text-accent" />
+                        Alternativas
+                      </p>
+                      {(re.alternatives ?? []).length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-1.5">
+                          {(re.alternatives ?? []).map((altId) => (
+                            <span
+                              key={altId}
+                              className="text-xs bg-surface2 text-textMuted px-2 py-0.5 rounded-full flex items-center gap-1"
+                            >
+                              {getExName(altId).split(' ').slice(0, 3).join(' ')}
+                              <button
+                                onClick={() => removeAlternative(re.exerciseId, altId)}
+                                className="text-textMuted hover:text-danger ml-0.5"
+                              >
+                                <X size={9} />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {addingAltFor === re.exerciseId ? (
+                        <div className="space-y-1.5 mt-1">
+                          <select
+                            className="input-base text-xs py-1"
+                            value={altPickMuscle}
+                            onChange={(e) => {
+                              setAltPickMuscle(e.target.value as MuscleGroup);
+                              setAltPickExercise('');
+                            }}
+                          >
+                            {MUSCLE_GROUP_ORDER.map((mg) => (
+                              <option key={mg} value={mg}>{MUSCLE_GROUP_LABELS[mg]}</option>
+                            ))}
+                          </select>
+                          <select
+                            className="input-base text-xs py-1"
+                            value={altPickExercise}
+                            onChange={(e) => setAltPickExercise(e.target.value)}
+                          >
+                            <option value="">— Elegí la alternativa —</option>
+                            {altFilteredExercises
+                              .filter((ex) => ex.id !== re.exerciseId && !(re.alternatives ?? []).includes(ex.id))
+                              .map((ex) => (
+                                <option key={ex.id} value={ex.id}>{ex.name}</option>
+                              ))}
+                          </select>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => addAlternativeToExercise(re.exerciseId, altPickExercise)}
+                              disabled={!altPickExercise}
+                              className="flex-1 bg-accent/20 text-accent text-xs py-1.5 rounded-lg disabled:opacity-40"
+                            >
+                              Agregar
+                            </button>
+                            <button
+                              onClick={() => { setAddingAltFor(null); setAltPickExercise(''); }}
+                              className="px-3 text-textMuted text-xs py-1.5 rounded-lg bg-surface2"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setAddingAltFor(re.exerciseId);
+                            const exMuscle = allExercises.find((e) => e.id === re.exerciseId)?.muscleGroup;
+                            if (exMuscle) setAltPickMuscle(exMuscle);
+                          }}
+                          className="text-xs text-accent/70 hover:text-accent transition-colors flex items-center gap-1"
+                        >
+                          <Plus size={10} />
+                          Agregar alternativa
+                        </button>
+                      )}
                     </div>
                   </div>
                   <button

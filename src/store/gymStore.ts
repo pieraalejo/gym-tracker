@@ -79,6 +79,8 @@ interface GymStore {
   updateActiveSet: (exerciseId: string, setNumber: number, updates: Partial<SetLog>) => void;
   addSetToActiveExercise: (exerciseId: string) => void;
   removeSetFromActiveExercise: (exerciseId: string, setNumber: number) => void;
+  addExerciseToActiveWorkout: (exerciseId: string, sets: number, reps: number, weight: number) => void;
+  swapActiveExercise: (oldExerciseId: string, newExerciseId: string) => void;
   finishWorkout: (notes: string, mood?: 1 | 2 | 3 | 4 | 5) => string | null;
   cancelWorkout: () => void;
 
@@ -337,6 +339,44 @@ export const useGymStore = create<GymStore>()(
         if (userId) sync(() => syncWorkoutLogDb(userId, log));
         return id;
       },
+
+      addExerciseToActiveWorkout: (exerciseId, sets, reps, weight) =>
+        set((state) => {
+          if (!state.activeWorkout) return state;
+          // Evitar duplicados
+          if (state.activeWorkout.exercises.some((e) => e.exerciseId === exerciseId)) return state;
+          const newExercise: ActiveWorkoutExercise = {
+            exerciseId,
+            skipped: false,
+            notes: '',
+            isExtra: true,
+            sets: Array.from({ length: sets }, (_, i) => ({
+              setNumber: i + 1,
+              reps,
+              weight,
+              completed: false,
+            })),
+          };
+          return {
+            activeWorkout: {
+              ...state.activeWorkout,
+              exercises: [...state.activeWorkout.exercises, newExercise],
+            },
+          };
+        }),
+
+      swapActiveExercise: (oldExerciseId, newExerciseId) =>
+        set((state) => {
+          if (!state.activeWorkout) return state;
+          return {
+            activeWorkout: {
+              ...state.activeWorkout,
+              exercises: state.activeWorkout.exercises.map((e) =>
+                e.exerciseId === oldExerciseId ? { ...e, exerciseId: newExerciseId } : e
+              ),
+            },
+          };
+        }),
 
       cancelWorkout: () => set({ activeWorkout: null }),
 

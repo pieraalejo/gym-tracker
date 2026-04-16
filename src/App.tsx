@@ -8,6 +8,7 @@ import Metrics from './pages/Metrics';
 import BearPreview from './pages/BearPreview';
 import Calendar from './pages/Calendar';
 import Onboarding from './pages/Onboarding';
+import Profile from './pages/Profile';
 import { useGymStore } from './store/gymStore';
 import { supabase } from './lib/supabase';
 
@@ -61,6 +62,7 @@ function App() {
           <Route path="/entrenar"    element={<WorkoutLogger />} />
           <Route path="/calendario"  element={<Calendar />} />
           <Route path="/metricas"    element={<Metrics />} />
+          <Route path="/perfil"      element={<Profile />} />
           <Route path="/bears"       element={<BearPreview />} />
         </Routes>
       </Layout>

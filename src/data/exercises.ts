@@ -113,6 +113,14 @@ export const DAY_TYPE_LABELS: Record<DayType, string> = {
   full: 'FULL BODY',
   cardio: 'CARDIO',
   custom: 'PERSONALIZADO',
+  musculo_pecho: 'PECHO',
+  musculo_espalda: 'ESPALDA',
+  musculo_hombros: 'HOMBROS',
+  musculo_biceps: 'BÍCEPS',
+  musculo_triceps: 'TRÍCEPS',
+  musculo_piernas: 'PIERNAS',
+  musculo_gluteos: 'GLÚTEOS',
+  musculo_abdomen: 'ABDOMEN',
 };
 
 export const DAY_TYPE_COLORS: Record<DayType, string> = {
@@ -124,6 +132,14 @@ export const DAY_TYPE_COLORS: Record<DayType, string> = {
   full: '#ec4899',
   cardio: '#06b6d4',
   custom: '#39ff14',
+  musculo_pecho: '#ef4444',
+  musculo_espalda: '#3b82f6',
+  musculo_hombros: '#f59e0b',
+  musculo_biceps: '#8b5cf6',
+  musculo_triceps: '#ec4899',
+  musculo_piernas: '#22c55e',
+  musculo_gluteos: '#06b6d4',
+  musculo_abdomen: '#39ff14',
 };
 
 export const DAY_TYPE_PRIMARY_MUSCLE: Record<DayType, MuscleGroup> = {
@@ -135,4 +151,12 @@ export const DAY_TYPE_PRIMARY_MUSCLE: Record<DayType, MuscleGroup> = {
   full: 'pecho',
   cardio: 'cardio',
   custom: 'pecho',
+  musculo_pecho: 'pecho',
+  musculo_espalda: 'espalda',
+  musculo_hombros: 'hombros',
+  musculo_biceps: 'biceps',
+  musculo_triceps: 'triceps',
+  musculo_piernas: 'piernas',
+  musculo_gluteos: 'gluteos',
+  musculo_abdomen: 'abdomen',
 };
