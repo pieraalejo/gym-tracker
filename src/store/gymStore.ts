@@ -24,6 +24,8 @@ import {
   insertBodyMeasurementDb,
   deleteBodyMeasurementDb,
   upsertWeeklyPlanDayDb,
+  upsertCustomExerciseDb,
+  deleteCustomExerciseDb,
 } from '../lib/db';
 
 const genId = (): string => crypto.randomUUID();
@@ -102,7 +104,7 @@ export const useGymStore = create<GymStore>()(
             setTimeout(() => reject(new Error('timeout')), 25000)
           );
           const load = loadAllUserData(userId);
-          const { profile, routines, workoutLogs, bodyMeasurements, weeklyPlan } =
+          const { profile, routines, workoutLogs, bodyMeasurements, weeklyPlan, customExercises } =
             await Promise.race([load, timeout]);
 
           // If the locally-persisted activeWorkout was already finished on another device,
@@ -118,6 +120,8 @@ export const useGymStore = create<GymStore>()(
             workoutLogs,
             bodyMeasurements,
             weeklyPlan,
+            // Supabase is authoritative for custom exercises — always replace local ones
+            exercises: [...DEFAULT_EXERCISES, ...customExercises],
             isLoading: false,
             ...(alreadyLogged ? { activeWorkout: null } : {}),
           });
@@ -180,20 +184,28 @@ export const useGymStore = create<GymStore>()(
       // ── Exercises ─────────────────────────────────────────────────────────
       exercises: DEFAULT_EXERCISES,
 
-      addExercise: (exercise) =>
-        set((state) => ({
-          exercises: [...state.exercises, { ...exercise, id: genId(), isCustom: true }],
-        })),
+      addExercise: (exercise) => {
+        const newExercise = { ...exercise, id: genId(), isCustom: true };
+        set((state) => ({ exercises: [...state.exercises, newExercise] }));
+        const userId = get().userId;
+        if (userId) sync(() => upsertCustomExerciseDb(userId, newExercise));
+      },
 
-      updateExercise: (id, updates) =>
+      updateExercise: (id, updates) => {
         set((state) => ({
           exercises: state.exercises.map((e) => (e.id === id ? { ...e, ...updates } : e)),
-        })),
+        }));
+        const userId = get().userId;
+        const exercise = get().exercises.find((e) => e.id === id);
+        if (userId && exercise?.isCustom) sync(() => upsertCustomExerciseDb(userId, exercise));
+      },
 
-      deleteExercise: (id) =>
+      deleteExercise: (id) => {
         set((state) => ({
           exercises: state.exercises.filter((e) => !(e.id === id && e.isCustom)),
-        })),
+        }));
+        sync(() => deleteCustomExerciseDb(id));
+      },
 
       // ── Routines ──────────────────────────────────────────────────────────
       routines: [],

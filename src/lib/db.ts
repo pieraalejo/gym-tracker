@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { Routine, WorkoutLog, BodyMeasurement, UserProfile, WeeklyPlan, WeekDay } from '../types';
+import type { Exercise, Routine, WorkoutLog, BodyMeasurement, UserProfile, WeeklyPlan, WeekDay } from '../types';
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
 
@@ -226,15 +226,45 @@ export async function upsertWeeklyPlanDayDb(userId: string, day: WeekDay, routin
   }
 }
 
+// ─── Custom exercises ─────────────────────────────────────────────────────────
+
+export async function fetchCustomExercises(userId: string): Promise<Exercise[]> {
+  const { data } = await supabase
+    .from('custom_exercises')
+    .select('*')
+    .eq('user_id', userId);
+  if (!data) return [];
+  return data.map((e: any) => ({
+    id: e.id,
+    name: e.name,
+    muscleGroup: e.muscle_group,
+    isCustom: true,
+  }));
+}
+
+export async function upsertCustomExerciseDb(userId: string, exercise: Exercise) {
+  await supabase.from('custom_exercises').upsert({
+    id: exercise.id,
+    user_id: userId,
+    name: exercise.name,
+    muscle_group: exercise.muscleGroup,
+  });
+}
+
+export async function deleteCustomExerciseDb(id: string) {
+  await supabase.from('custom_exercises').delete().eq('id', id);
+}
+
 // ─── Load all user data ───────────────────────────────────────────────────────
 
 export async function loadAllUserData(userId: string) {
-  const [profile, routines, workoutLogs, bodyMeasurements, weeklyPlan] = await Promise.all([
+  const [profile, routines, workoutLogs, bodyMeasurements, weeklyPlan, customExercises] = await Promise.all([
     fetchProfile(userId),
     fetchRoutines(userId),
     fetchWorkoutLogs(userId),
     fetchBodyMeasurements(userId),
     fetchWeeklyPlan(userId),
+    fetchCustomExercises(userId),
   ]);
-  return { profile, routines, workoutLogs, bodyMeasurements, weeklyPlan };
+  return { profile, routines, workoutLogs, bodyMeasurements, weeklyPlan, customExercises };
 }
