@@ -16,17 +16,21 @@ function App() {
   const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
-    // Use onAuthStateChange exclusively — it fires INITIAL_SESSION on mount
+    // getSession() reads from local cache — nearly instant, no network needed
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        loadUserData(session.user.id); // fire and forget — has 8s timeout built in
+      }
+      setAuthChecked(true);
+    });
+
+    // Listen for future auth changes (login / logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (session?.user) {
-          await loadUserData(session.user.id);
+      (event, session) => {
+        if (event === 'SIGNED_IN' && session?.user) {
+          loadUserData(session.user.id);
         } else if (event === 'SIGNED_OUT') {
           resetStore();
-        }
-        // Mark auth as resolved after the initial state is known
-        if (event === 'INITIAL_SESSION') {
-          setAuthChecked(true);
         }
       }
     );
@@ -34,7 +38,8 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  if (!authChecked || isLoading) {
+  // Block only while: auth state unknown, OR user is authenticated but profile still loading
+  if (!authChecked || (userId && isLoading)) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
         <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
