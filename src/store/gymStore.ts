@@ -104,6 +104,14 @@ export const useGymStore = create<GymStore>()(
           const load = loadAllUserData(userId);
           const { profile, routines, workoutLogs, bodyMeasurements, weeklyPlan } =
             await Promise.race([load, timeout]);
+
+          // If the locally-persisted activeWorkout was already finished on another device,
+          // clear it (match by startTime against loaded workout logs).
+          const currentActive = get().activeWorkout;
+          const alreadyLogged =
+            currentActive != null &&
+            workoutLogs.some((l) => l.startTime === currentActive.startTime);
+
           set({
             userProfile: profile,
             routines,
@@ -111,6 +119,7 @@ export const useGymStore = create<GymStore>()(
             bodyMeasurements,
             weeklyPlan,
             isLoading: false,
+            ...(alreadyLogged ? { activeWorkout: null } : {}),
           });
         } catch (err) {
           console.error('Failed to load user data:', err);
@@ -402,6 +411,13 @@ export const useGymStore = create<GymStore>()(
         restTimerDuration: state.restTimerDuration,
         exercises: state.exercises, // keep custom exercises local
       }),
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        // Always use the latest DEFAULT_EXERCISES for built-in exercises,
+        // keeping only user-created custom exercises from localStorage.
+        const customExercises = state.exercises.filter((e) => e.isCustom);
+        state.exercises = [...DEFAULT_EXERCISES, ...customExercises];
+      },
     }
   )
 );
