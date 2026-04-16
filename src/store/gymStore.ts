@@ -126,7 +126,7 @@ export const useGymStore = create<GymStore>()(
           weeklyPlan: {},
           activeWorkout: null,
           isLoading: false,
-          exercises: DEFAULT_EXERCISES,
+          // exercises are NOT reset so custom exercises survive logout/login
         }),
 
       // ── Profile ──────────────────────────────────────────────────────────
@@ -163,7 +163,7 @@ export const useGymStore = create<GymStore>()(
       },
 
       // ── Rest timer ────────────────────────────────────────────────────────
-      restTimerDuration: 90,
+      restTimerDuration: 180,
       setRestTimerDuration: (s) => set({ restTimerDuration: s }),
 
       // ── Exercises ─────────────────────────────────────────────────────────

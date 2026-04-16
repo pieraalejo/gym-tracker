@@ -1,15 +1,26 @@
 import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, Edit2, Check } from 'lucide-react';
+import { useGymStore } from '../store/gymStore';
 
 interface Props {
   duration: number; // seconds
   onClose: () => void;
 }
 
-const PRESETS = [60, 90, 120];
+const PRESETS = [90, 180];
+
+function formatTime(s: number) {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
 
 export function RestTimer({ duration, onClose }: Props) {
+  const { setRestTimerDuration } = useGymStore();
+  const [initialDuration, setInitialDuration] = useState(duration);
   const [remaining, setRemaining] = useState(duration);
+  const [showCustom, setShowCustom] = useState(false);
+  const [customInput, setCustomInput] = useState('');
   const done = remaining <= 0;
 
   useEffect(() => {
@@ -21,10 +32,36 @@ export function RestTimer({ duration, onClose }: Props) {
     return () => clearTimeout(id);
   }, [remaining, done]);
 
-  const pct = Math.max(0, remaining / duration);
+  const pct = Math.max(0, remaining / initialDuration);
   const circumference = 2 * Math.PI * 44;
   const mins = Math.floor(remaining / 60);
   const secs = remaining % 60;
+
+  function applyPreset(s: number) {
+    setRestTimerDuration(s);
+    setRemaining(s);
+    setInitialDuration(s);
+    setShowCustom(false);
+  }
+
+  function applyCustom() {
+    const parts = customInput.split(':');
+    let total = 0;
+    if (parts.length === 2) {
+      total = (parseInt(parts[0]) || 0) * 60 + (parseInt(parts[1]) || 0);
+    } else {
+      // treat as minutes
+      const mins = parseFloat(customInput);
+      if (!isNaN(mins) && mins > 0) total = Math.round(mins * 60);
+    }
+    if (total > 0) {
+      setRestTimerDuration(total);
+      setRemaining(total);
+      setInitialDuration(total);
+    }
+    setShowCustom(false);
+    setCustomInput('');
+  }
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-6">
@@ -42,7 +79,7 @@ export function RestTimer({ duration, onClose }: Props) {
               cy="50"
               r="44"
               fill="none"
-              stroke={done ? '#39ff14' : '#39ff14'}
+              stroke="#39ff14"
               strokeWidth="6"
               strokeLinecap="round"
               strokeDasharray={circumference}
@@ -61,19 +98,55 @@ export function RestTimer({ duration, onClose }: Props) {
           </div>
         </div>
 
-        {/* Preset buttons */}
-        <div className="flex justify-center gap-2">
-          {PRESETS.map((s) => (
+        {/* Preset buttons + edit */}
+        {!showCustom ? (
+          <div className="flex justify-center gap-2">
+            {PRESETS.map((s) => (
+              <button
+                key={s}
+                onClick={() => applyPreset(s)}
+                className="text-xs px-3 py-1.5 rounded-lg bg-surface2 text-textMuted hover:text-textPrimary transition-colors font-pixel"
+                style={{ fontSize: '8px' }}
+              >
+                {formatTime(s)}
+              </button>
+            ))}
             <button
-              key={s}
-              onClick={() => setRemaining(s)}
-              className="text-xs px-3 py-1.5 rounded-lg bg-surface2 text-textMuted hover:text-textPrimary transition-colors font-pixel"
-              style={{ fontSize: '8px' }}
+              onClick={() => {
+                setCustomInput('');
+                setShowCustom(true);
+              }}
+              className="text-xs px-3 py-1.5 rounded-lg bg-surface2 text-textMuted hover:text-textPrimary transition-colors"
             >
-              {s}s
+              <Edit2 size={12} />
             </button>
-          ))}
-        </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center gap-2">
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="min (ej: 2.5)"
+              value={customInput}
+              onChange={(e) => setCustomInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && applyCustom()}
+              autoFocus
+              className="input-base text-center py-1.5 text-sm w-28"
+            />
+            <button
+              onClick={applyCustom}
+              className="w-8 h-8 rounded-lg bg-accent text-background flex items-center justify-center"
+            >
+              <Check size={14} />
+            </button>
+            <button
+              onClick={() => setShowCustom(false)}
+              className="w-8 h-8 rounded-lg bg-surface2 text-textMuted flex items-center justify-center"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
 
         <button
           onClick={onClose}

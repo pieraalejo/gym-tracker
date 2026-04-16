@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Check, X, Plus, Minus, ChevronDown, ChevronUp, Dumbbell, Flag, MessageSquare
@@ -460,6 +460,26 @@ interface SetRowProps {
 
 function SetRow({ set, onRepsChange, onWeightChange, onToggle, onNotesChange, onRemove }: SetRowProps) {
   const [showNote, setShowNote] = useState(!!set.notes);
+  // String state for inputs to avoid leading-zero issues on mobile
+  const [repsStr, setRepsStr] = useState(set.reps === 0 ? '' : String(set.reps));
+  const [weightStr, setWeightStr] = useState(set.weight === 0 ? '' : String(set.weight));
+  const prevReps = useRef(set.reps);
+  const prevWeight = useRef(set.weight);
+
+  // Sync string state only when value changes from outside (not while user is typing)
+  useEffect(() => {
+    if (set.reps !== prevReps.current) {
+      setRepsStr(set.reps === 0 ? '' : String(set.reps));
+      prevReps.current = set.reps;
+    }
+  }, [set.reps]);
+
+  useEffect(() => {
+    if (set.weight !== prevWeight.current) {
+      setWeightStr(set.weight === 0 ? '' : String(set.weight));
+      prevWeight.current = set.weight;
+    }
+  }, [set.weight]);
 
   return (
     <div>
@@ -479,28 +499,40 @@ function SetRow({ set, onRepsChange, onWeightChange, onToggle, onNotesChange, on
           )}
         </div>
 
-        {/* Reps */}
+        {/* Reps — text input to avoid leading zeros on mobile */}
         <input
-          type="number"
-          min="0"
-          step="1"
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
           className={`input-base text-center py-2 text-sm ${
             set.completed ? 'border-accent/60 text-accent' : ''
           }`}
-          value={set.reps}
-          onChange={(e) => onRepsChange(parseFloat(e.target.value) || 0)}
+          value={repsStr}
+          onFocus={(e) => e.target.select()}
+          onChange={(e) => {
+            const raw = e.target.value.replace(/[^0-9]/g, '');
+            setRepsStr(raw);
+            prevReps.current = raw === '' ? 0 : parseInt(raw);
+            onRepsChange(raw === '' ? 0 : parseInt(raw));
+          }}
         />
 
-        {/* Weight */}
+        {/* Weight — text input to avoid leading zeros on mobile */}
         <input
-          type="number"
-          min="0"
-          step="0.5"
+          type="text"
+          inputMode="decimal"
           className={`input-base text-center py-2 text-sm ${
             set.completed ? 'border-accent/60 text-accent' : ''
           }`}
-          value={set.weight}
-          onChange={(e) => onWeightChange(parseFloat(e.target.value) || 0)}
+          value={weightStr}
+          onFocus={(e) => e.target.select()}
+          onChange={(e) => {
+            const raw = e.target.value.replace(/[^0-9.]/g, '');
+            setWeightStr(raw);
+            const num = raw === '' ? 0 : parseFloat(raw) || 0;
+            prevWeight.current = num;
+            onWeightChange(num);
+          }}
         />
 
         {/* Complete toggle */}
