@@ -5,6 +5,8 @@ export type MuscleGroup =
   | 'biceps'
   | 'triceps'
   | 'piernas'
+  | 'piernas_cuadriceps'
+  | 'piernas_femorales'
   | 'gluteos'
   | 'abdomen'
   | 'cardio';
@@ -18,12 +20,15 @@ export type DayType =
   | 'full'
   | 'cardio'
   | 'custom'
+  | 'brazos'
   | 'musculo_pecho'
   | 'musculo_espalda'
   | 'musculo_hombros'
   | 'musculo_biceps'
   | 'musculo_triceps'
   | 'musculo_piernas'
+  | 'musculo_piernas_cuadriceps'
+  | 'musculo_piernas_femorales'
   | 'musculo_gluteos'
   | 'musculo_abdomen';
 

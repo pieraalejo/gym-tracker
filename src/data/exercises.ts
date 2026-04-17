@@ -51,16 +51,18 @@ export const DEFAULT_EXERCISES: Exercise[] = [
   { id: 'tr006', name: 'Extensión sobre cabeza con mancuerna', muscleGroup: 'triceps', isCustom: false },
   { id: 'tr007', name: 'Fondos en paralelas (tríceps)', muscleGroup: 'triceps', isCustom: false },
 
-  // PIERNAS
-  { id: 'pi001', name: 'Sentadilla con barra', muscleGroup: 'piernas', isCustom: false },
-  { id: 'pi002', name: 'Prensa de piernas', muscleGroup: 'piernas', isCustom: false },
-  { id: 'pi003', name: 'Extensión de cuádriceps en máquina', muscleGroup: 'piernas', isCustom: false },
-  { id: 'pi004', name: 'Curl de femoral acostado', muscleGroup: 'piernas', isCustom: false },
-  { id: 'pi005', name: 'Peso muerto rumano', muscleGroup: 'piernas', isCustom: false },
-  { id: 'pi006', name: 'Zancadas con mancuernas', muscleGroup: 'piernas', isCustom: false },
-  { id: 'pi007', name: 'Sentadilla búlgara', muscleGroup: 'piernas', isCustom: false },
-  { id: 'pi008', name: 'Gemelos de pie (pantorrillas)', muscleGroup: 'piernas', isCustom: false },
-  { id: 'pi009', name: 'Sentadilla hack', muscleGroup: 'piernas', isCustom: false },
+  // PIERNAS - CUÁDRICEPS
+  { id: 'pi001', name: 'Sentadilla con barra', muscleGroup: 'piernas_cuadriceps', isCustom: false },
+  { id: 'pi002', name: 'Prensa de piernas', muscleGroup: 'piernas_cuadriceps', isCustom: false },
+  { id: 'pi003', name: 'Extensión de cuádriceps en máquina', muscleGroup: 'piernas_cuadriceps', isCustom: false },
+  { id: 'pi006', name: 'Zancadas con mancuernas', muscleGroup: 'piernas_cuadriceps', isCustom: false },
+  { id: 'pi007', name: 'Sentadilla búlgara', muscleGroup: 'piernas_cuadriceps', isCustom: false },
+  { id: 'pi008', name: 'Gemelos de pie (pantorrillas)', muscleGroup: 'piernas_cuadriceps', isCustom: false },
+  { id: 'pi009', name: 'Sentadilla hack', muscleGroup: 'piernas_cuadriceps', isCustom: false },
+
+  // PIERNAS - FEMORALES
+  { id: 'pi004', name: 'Curl de femoral acostado', muscleGroup: 'piernas_femorales', isCustom: false },
+  { id: 'pi005', name: 'Peso muerto rumano', muscleGroup: 'piernas_femorales', isCustom: false },
 
   // GLUTEOS
   { id: 'gl001', name: 'Hip thrust con barra', muscleGroup: 'gluteos', isCustom: false },
@@ -94,6 +96,8 @@ export const MUSCLE_GROUP_LABELS: Record<MuscleGroup, string> = {
   biceps: 'Bíceps',
   triceps: 'Tríceps',
   piernas: 'Piernas',
+  piernas_cuadriceps: 'Piernas (Cuádriceps)',
+  piernas_femorales: 'Piernas (Femorales)',
   gluteos: 'Glúteos',
   abdomen: 'Abdomen',
   cardio: 'Cardio',
@@ -101,7 +105,7 @@ export const MUSCLE_GROUP_LABELS: Record<MuscleGroup, string> = {
 
 export const MUSCLE_GROUP_ORDER: MuscleGroup[] = [
   'pecho', 'espalda', 'hombros', 'biceps', 'triceps',
-  'piernas', 'gluteos', 'abdomen', 'cardio',
+  'piernas_cuadriceps', 'piernas_femorales', 'piernas', 'gluteos', 'abdomen', 'cardio',
 ];
 
 export const DAY_TYPE_LABELS: Record<DayType, string> = {
@@ -113,12 +117,15 @@ export const DAY_TYPE_LABELS: Record<DayType, string> = {
   full: 'FULL BODY',
   cardio: 'CARDIO',
   custom: 'PERSONALIZADO',
+  brazos: 'BRAZOS — Bíceps / Tríceps',
   musculo_pecho: 'PECHO',
   musculo_espalda: 'ESPALDA',
   musculo_hombros: 'HOMBROS',
   musculo_biceps: 'BÍCEPS',
   musculo_triceps: 'TRÍCEPS',
   musculo_piernas: 'PIERNAS',
+  musculo_piernas_cuadriceps: 'PIERNAS CUÁDRICEPS',
+  musculo_piernas_femorales: 'PIERNAS FEMORALES',
   musculo_gluteos: 'GLÚTEOS',
   musculo_abdomen: 'ABDOMEN',
 };
@@ -132,12 +139,15 @@ export const DAY_TYPE_COLORS: Record<DayType, string> = {
   full: '#ec4899',
   cardio: '#06b6d4',
   custom: '#39ff14',
+  brazos: '#a78bfa',
   musculo_pecho: '#ef4444',
   musculo_espalda: '#3b82f6',
   musculo_hombros: '#f59e0b',
   musculo_biceps: '#8b5cf6',
   musculo_triceps: '#ec4899',
   musculo_piernas: '#22c55e',
+  musculo_piernas_cuadriceps: '#4ade80',
+  musculo_piernas_femorales: '#86efac',
   musculo_gluteos: '#06b6d4',
   musculo_abdomen: '#39ff14',
 };
@@ -145,18 +155,21 @@ export const DAY_TYPE_COLORS: Record<DayType, string> = {
 export const DAY_TYPE_PRIMARY_MUSCLE: Record<DayType, MuscleGroup> = {
   push: 'pecho',
   pull: 'espalda',
-  legs: 'piernas',
+  legs: 'piernas_cuadriceps',
   upper: 'pecho',
-  lower: 'piernas',
+  lower: 'piernas_cuadriceps',
   full: 'pecho',
   cardio: 'cardio',
   custom: 'pecho',
+  brazos: 'biceps',
   musculo_pecho: 'pecho',
   musculo_espalda: 'espalda',
   musculo_hombros: 'hombros',
   musculo_biceps: 'biceps',
   musculo_triceps: 'triceps',
   musculo_piernas: 'piernas',
+  musculo_piernas_cuadriceps: 'piernas_cuadriceps',
+  musculo_piernas_femorales: 'piernas_femorales',
   musculo_gluteos: 'gluteos',
   musculo_abdomen: 'abdomen',
 };

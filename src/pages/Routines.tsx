@@ -30,13 +30,14 @@ const EMPTY_FORM: RoutineForm = {
 const DAY_TYPE_GROUPS: { label: string; types: DayType[] }[] = [
   {
     label: 'COMBINADOS',
-    types: ['push', 'pull', 'legs', 'upper', 'lower', 'full', 'cardio', 'custom'],
+    types: ['push', 'pull', 'legs', 'upper', 'lower', 'full', 'cardio', 'brazos', 'custom'],
   },
   {
     label: 'POR MÚSCULO',
     types: [
       'musculo_pecho', 'musculo_espalda', 'musculo_hombros',
-      'musculo_biceps', 'musculo_triceps', 'musculo_piernas',
+      'musculo_biceps', 'musculo_triceps',
+      'musculo_piernas_cuadriceps', 'musculo_piernas_femorales',
       'musculo_gluteos', 'musculo_abdomen',
     ],
   },
