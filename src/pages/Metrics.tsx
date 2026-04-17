@@ -29,13 +29,24 @@ function getDuration(start?: string, end?: string): string {
   return `${Math.floor(mins / 60)}h ${mins % 60}m`;
 }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+interface TooltipPayloadItem {
+  name?: string;
+  color?: string;
+  value?: number | string;
+}
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: TooltipPayloadItem[];
+  label?: string | number;
+}
+
+const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
   if (!active || !payload?.length) return null;
   return (
     <div className="bg-surface border border-border rounded-lg p-2 text-xs">
       <p className="text-textMuted mb-1">{label}</p>
-      {payload.map((p: any) => (
-        <p key={p.name} style={{ color: p.color }}>
+      {payload.map((p, i) => (
+        <p key={p.name ?? i} style={{ color: p.color }}>
           {p.name}: <strong>{typeof p.value === 'number' ? p.value.toFixed(1) : p.value}</strong>
         </p>
       ))}
@@ -110,19 +121,18 @@ export default function Metrics() {
   }, [workoutLogs]);
 
   const personalRecords = useMemo(() => {
-    return loggedExerciseIds
-      .map((id) => {
-        const prog = getExerciseProgress(workoutLogs, id);
-        if (prog.length === 0) return null;
-        return {
-          exerciseId: id,
-          maxWeight: Math.max(...prog.map((p) => p.maxWeight)),
-          maxVolume: Math.max(...prog.map((p) => p.totalVolume)),
-        };
-      })
-      .filter(Boolean)
-      .sort((a: any, b: any) => b.maxWeight - a.maxWeight)
-      .slice(0, 5) as Array<{ exerciseId: string; maxWeight: number; maxVolume: number }>;
+    type PR = { exerciseId: string; maxWeight: number; maxVolume: number };
+    const records: PR[] = [];
+    for (const id of loggedExerciseIds) {
+      const prog = getExerciseProgress(workoutLogs, id);
+      if (prog.length === 0) continue;
+      records.push({
+        exerciseId: id,
+        maxWeight: Math.max(...prog.map((p) => p.maxWeight)),
+        maxVolume: Math.max(...prog.map((p) => p.totalVolume)),
+      });
+    }
+    return records.sort((a, b) => b.maxWeight - a.maxWeight).slice(0, 5);
   }, [workoutLogs, loggedExerciseIds]);
 
   const trend = useMemo(() => {

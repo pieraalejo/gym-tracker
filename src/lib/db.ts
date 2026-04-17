@@ -1,5 +1,79 @@
 import { supabase } from './supabase';
-import type { Exercise, Routine, WorkoutLog, BodyMeasurement, UserProfile, WeeklyPlan, WeekDay } from '../types';
+import type { Exercise, Routine, WorkoutLog, BodyMeasurement, UserProfile, WeeklyPlan, WeekDay, MuscleGroup, DayType } from '../types';
+
+// ─── Row types (raw Supabase shape, snake_case) ───────────────────────────────
+interface ProfileRow {
+  id: string;
+  name: string | null;
+  email: string | null;
+  weight: number | null;
+  height: number | null;
+  body_fat: number | null;
+  created_at: string | null;
+}
+
+interface RoutineExerciseRow {
+  exercise_id: string;
+  target_sets: number;
+  target_reps: number;
+  target_weight: number;
+  notes: string | null;
+  order_index: number;
+}
+
+interface RoutineRow {
+  id: string;
+  name: string;
+  day_type: DayType;
+  color: string;
+  created_at: string;
+  routine_exercises: RoutineExerciseRow[] | null;
+}
+
+interface SetLogRow {
+  set_number: number;
+  reps: number;
+  weight: number;
+  completed: boolean;
+  notes: string | null;
+}
+
+interface ExerciseLogRow {
+  exercise_id: string;
+  notes: string | null;
+  skipped: boolean;
+  set_logs: SetLogRow[] | null;
+}
+
+interface WorkoutLogRow {
+  id: string;
+  routine_id: string | null;
+  date: string;
+  completed: boolean;
+  notes: string | null;
+  mood: 1 | 2 | 3 | 4 | 5 | null;
+  start_time: string | null;
+  end_time: string | null;
+  exercise_logs: ExerciseLogRow[] | null;
+}
+
+interface BodyMeasurementRow {
+  id: string;
+  date: string;
+  weight: number;
+  body_fat: number | null;
+}
+
+interface WeeklyPlanRow {
+  day_of_week: number;
+  routine_id: string | null;
+}
+
+interface CustomExerciseRow {
+  id: string;
+  name: string;
+  muscle_group: MuscleGroup;
+}
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
 
@@ -8,7 +82,7 @@ export async function fetchProfile(userId: string): Promise<UserProfile | null> 
     .from('profiles')
     .select('*')
     .eq('id', userId)
-    .single();
+    .single<ProfileRow>();
   if (!data) return null;
   return {
     name: data.name ?? '',
@@ -39,22 +113,23 @@ export async function fetchRoutines(userId: string): Promise<Routine[]> {
     .from('routines')
     .select('*, routine_exercises(*)')
     .eq('user_id', userId)
-    .order('created_at');
+    .order('created_at')
+    .returns<RoutineRow[]>();
   if (!data) return [];
-  return data.map((r: any) => ({
+  return data.map((r) => ({
     id: r.id,
     name: r.name,
     dayType: r.day_type,
     color: r.color,
     createdAt: r.created_at,
     exercises: (r.routine_exercises ?? [])
-      .sort((a: any, b: any) => a.order_index - b.order_index)
-      .map((e: any) => ({
+      .sort((a, b) => a.order_index - b.order_index)
+      .map((e) => ({
         exerciseId: e.exercise_id,
         targetSets: e.target_sets,
         targetReps: e.target_reps,
         targetWeight: e.target_weight,
-        notes: e.notes,
+        notes: e.notes ?? '',
       })),
   }));
 }
@@ -95,24 +170,25 @@ export async function fetchWorkoutLogs(userId: string): Promise<WorkoutLog[]> {
     .from('workout_logs')
     .select('*, exercise_logs(*, set_logs(*))')
     .eq('user_id', userId)
-    .order('date', { ascending: false });
+    .order('date', { ascending: false })
+    .returns<WorkoutLogRow[]>();
   if (!data) return [];
-  return data.map((log: any) => ({
+  return data.map((log) => ({
     id: log.id,
     routineId: log.routine_id ?? '',
     date: log.date,
     completed: log.completed,
     notes: log.notes ?? '',
-    mood: log.mood,
-    startTime: log.start_time,
-    endTime: log.end_time,
-    exercises: (log.exercise_logs ?? []).map((e: any) => ({
+    mood: log.mood ?? undefined,
+    startTime: log.start_time ?? undefined,
+    endTime: log.end_time ?? undefined,
+    exercises: (log.exercise_logs ?? []).map((e) => ({
       exerciseId: e.exercise_id,
       notes: e.notes ?? '',
       skipped: e.skipped,
       sets: (e.set_logs ?? [])
-        .sort((a: any, b: any) => a.set_number - b.set_number)
-        .map((s: any) => ({
+        .sort((a, b) => a.set_number - b.set_number)
+        .map((s) => ({
           setNumber: s.set_number,
           reps: s.reps,
           weight: s.weight,
@@ -179,9 +255,10 @@ export async function fetchBodyMeasurements(userId: string): Promise<BodyMeasure
     .from('body_measurements')
     .select('*')
     .eq('user_id', userId)
-    .order('date');
+    .order('date')
+    .returns<BodyMeasurementRow[]>();
   if (!data) return [];
-  return data.map((m: any) => ({
+  return data.map((m) => ({
     id: m.id,
     date: m.date,
     weight: m.weight,
@@ -209,10 +286,11 @@ export async function fetchWeeklyPlan(userId: string): Promise<WeeklyPlan> {
   const { data } = await supabase
     .from('weekly_plan')
     .select('*')
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .returns<WeeklyPlanRow[]>();
   if (!data) return {};
   const plan: WeeklyPlan = {};
-  data.forEach((row: any) => {
+  data.forEach((row) => {
     if (row.routine_id) plan[row.day_of_week as WeekDay] = row.routine_id;
   });
   return plan;
@@ -232,9 +310,10 @@ export async function fetchCustomExercises(userId: string): Promise<Exercise[]> 
   const { data } = await supabase
     .from('custom_exercises')
     .select('*')
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .returns<CustomExerciseRow[]>();
   if (!data) return [];
-  return data.map((e: any) => ({
+  return data.map((e) => ({
     id: e.id,
     name: e.name,
     muscleGroup: e.muscle_group,

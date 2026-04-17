@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Check, X, Plus, Minus, ChevronDown, ChevronUp, Dumbbell, Flag, MessageSquare, Shuffle,
@@ -10,7 +10,8 @@ import {
   MUSCLE_GROUP_ORDER,
 } from '../data/exercises';
 import { RestTimer } from '../components/RestTimer';
-import type { SetLog, MuscleGroup } from '../types';
+import { useFocusTrap } from '../hooks/useFocusTrap';
+import type { Exercise, SetLog, MuscleGroup } from '../types';
 
 type Phase = 'select' | 'workout' | 'complete';
 
@@ -41,6 +42,13 @@ export default function WorkoutLogger() {
   );
 
   const [phase, setPhase] = useState<Phase>(activeWorkout ? 'workout' : 'select');
+  // If activeWorkout appears (e.g. cross-device sync) while we're on 'select', jump in.
+  const [lastWorkoutKey, setLastWorkoutKey] = useState<string | null>(activeWorkout?.startTime ?? null);
+  const currentKey = activeWorkout?.startTime ?? null;
+  if (currentKey !== lastWorkoutKey) {
+    setLastWorkoutKey(currentKey);
+    if (currentKey && phase === 'select') setPhase('workout');
+  }
   const [expandedEx, setExpandedEx] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [mood, setMood] = useState<1 | 2 | 3 | 4 | 5>(3);
@@ -57,10 +65,6 @@ export default function WorkoutLogger() {
   const [extraSets, setExtraSets] = useState('3');
   const [extraReps, setExtraReps] = useState('12');
   const [extraWeight, setExtraWeight] = useState('0');
-
-  useEffect(() => {
-    if (activeWorkout) setPhase('workout');
-  }, [activeWorkout]);
 
   // Timer
   useEffect(() => {
@@ -162,18 +166,6 @@ export default function WorkoutLogger() {
       ),
     [allExercises, extraMuscle, activeWorkout]
   );
-
-  // Cerrar modales con Escape
-  useEffect(() => {
-    if (!swapForExId && !showExtraModal) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      if (swapForExId) setSwapForExId(null);
-      else if (showExtraModal) setShowExtraModal(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [swapForExId, showExtraModal]);
 
   // ── SELECT PHASE ──────────────────────────────────────────────────────────
   if (phase === 'select') {
@@ -350,160 +342,37 @@ export default function WorkoutLogger() {
       )}
 
       {/* Modal de swap alternativas */}
-      {swapForExId && (() => {
-        const alts = getAlternatives(swapForExId);
-        return (
-          <div
-            className="fixed inset-0 z-50 flex flex-col justify-end"
-            onClick={() => setSwapForExId(null)}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Cambiar ejercicio"
-          >
-            <div
-              className="bg-surface border-t border-border rounded-t-2xl p-5 space-y-3"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <p className="font-pixel text-accent text-center" style={{ fontSize: '10px' }}>
-                CAMBIAR EJERCICIO
-              </p>
-              <p className="text-textMuted text-xs text-center mb-2">
-                Elegí qué hiciste hoy
-              </p>
-
-              {/* Opción actual */}
-              <button
-                onClick={() => setSwapForExId(null)}
-                className="w-full flex items-center justify-between p-3 rounded-xl border border-accent bg-accent/10 text-accent text-sm"
-              >
-                <span>{getExName(swapForExId)}</span>
-                <Check size={16} />
-              </button>
-
-              {/* Alternativas */}
-              {alts.map((altId) => (
-                <button
-                  key={altId}
-                  onClick={() => {
-                    swapActiveExercise(swapForExId, altId);
-                    setSwapForExId(null);
-                    if (expandedEx === swapForExId) setExpandedEx(altId);
-                  }}
-                  className="w-full flex items-center p-3 rounded-xl border border-border bg-surface2 text-textPrimary text-sm text-left"
-                >
-                  <Shuffle size={14} className="text-accent mr-2 flex-shrink-0" />
-                  {getExName(altId)}
-                </button>
-              ))}
-
-              <button
-                onClick={() => setSwapForExId(null)}
-                className="w-full text-textMuted text-xs py-2"
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        );
-      })()}
+      {swapForExId && (
+        <SwapModal
+          exerciseId={swapForExId}
+          alternatives={getAlternatives(swapForExId)}
+          getExName={getExName}
+          onClose={() => setSwapForExId(null)}
+          onSwap={(altId) => {
+            swapActiveExercise(swapForExId, altId);
+            setSwapForExId(null);
+            if (expandedEx === swapForExId) setExpandedEx(altId);
+          }}
+        />
+      )}
 
       {/* Modal de ejercicio extra */}
       {showExtraModal && (
-        <div
-          className="fixed inset-0 z-50 flex flex-col justify-end"
-          onClick={() => setShowExtraModal(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Agregar ejercicio extra"
-        >
-          <div
-            className="bg-surface border-t border-border rounded-t-2xl p-5 space-y-3 max-h-[80vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p className="font-pixel text-accent text-center" style={{ fontSize: '10px' }}>
-              EJERCICIO EXTRA
-            </p>
-            <p className="text-textMuted text-xs text-center">
-              Se suma a esta sesión sin modificar tu rutina
-            </p>
-
-            <div>
-              <label className="text-xs text-textMuted mb-1 block">Grupo muscular</label>
-              <select
-                className="input-base"
-                value={extraMuscle}
-                onChange={(e) => {
-                  setExtraMuscle(e.target.value as MuscleGroup);
-                  setExtraExercise('');
-                }}
-              >
-                {MUSCLE_GROUP_ORDER.map((mg) => (
-                  <option key={mg} value={mg}>{MUSCLE_GROUP_LABELS[mg]}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-xs text-textMuted mb-1 block">Ejercicio</label>
-              <select
-                className="input-base"
-                value={extraExercise}
-                onChange={(e) => setExtraExercise(e.target.value)}
-              >
-                <option value="">— Seleccioná un ejercicio —</option>
-                {extraFiltered.map((ex) => (
-                  <option key={ex.id} value={ex.id}>{ex.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="text-xs text-textMuted mb-1 block">Series</label>
-                <input
-                  type="number" min="1" max="20"
-                  className="input-base text-center"
-                  value={extraSets}
-                  onChange={(e) => setExtraSets(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-textMuted mb-1 block">Reps</label>
-                <input
-                  type="number" min="1" max="100"
-                  className="input-base text-center"
-                  value={extraReps}
-                  onChange={(e) => setExtraReps(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-textMuted mb-1 block">Peso (kg)</label>
-                <input
-                  type="number" min="0" step="0.5"
-                  className="input-base text-center"
-                  value={extraWeight}
-                  onChange={(e) => setExtraWeight(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <button
-              onClick={handleAddExtra}
-              disabled={!extraExercise}
-              className="w-full bg-accent text-background font-pixel py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95 transition-transform"
-              style={{ fontSize: '9px' }}
-            >
-              <Plus size={14} />
-              AGREGAR A LA SESIÓN
-            </button>
-            <button
-              onClick={() => setShowExtraModal(false)}
-              className="w-full text-textMuted text-xs py-2"
-            >
-              Cancelar
-            </button>
-          </div>
-        </div>
+        <ExtraExerciseModal
+          muscle={extraMuscle}
+          setMuscle={(m) => { setExtraMuscle(m); setExtraExercise(''); }}
+          exerciseId={extraExercise}
+          setExerciseId={setExtraExercise}
+          sets={extraSets}
+          setSets={setExtraSets}
+          reps={extraReps}
+          setReps={setExtraReps}
+          weight={extraWeight}
+          setWeight={setExtraWeight}
+          options={extraFiltered}
+          onClose={() => setShowExtraModal(false)}
+          onConfirm={handleAddExtra}
+        />
       )}
 
       {/* Header */}
@@ -728,24 +597,23 @@ interface SetRowProps {
 
 function SetRow({ set, onRepsChange, onWeightChange, onToggle, onNotesChange, onRemove }: SetRowProps) {
   const [showNote, setShowNote] = useState(!!set.notes);
-  const [repsStr, setRepsStr] = useState(set.reps === 0 ? '' : String(set.reps));
-  const [weightStr, setWeightStr] = useState(set.weight === 0 ? '' : String(set.weight));
-  const prevReps = useRef(set.reps);
-  const prevWeight = useRef(set.weight);
+  // Local string state so the user can clear the input (numbers can't represent ""),
+  // re-derived during render when the parent's value changes from outside.
+  const [repsLocal, setRepsLocal] = useState(() => ({
+    str: set.reps === 0 ? '' : String(set.reps),
+    fromProp: set.reps,
+  }));
+  const [weightLocal, setWeightLocal] = useState(() => ({
+    str: set.weight === 0 ? '' : String(set.weight),
+    fromProp: set.weight,
+  }));
 
-  useEffect(() => {
-    if (set.reps !== prevReps.current) {
-      setRepsStr(set.reps === 0 ? '' : String(set.reps));
-      prevReps.current = set.reps;
-    }
-  }, [set.reps]);
-
-  useEffect(() => {
-    if (set.weight !== prevWeight.current) {
-      setWeightStr(set.weight === 0 ? '' : String(set.weight));
-      prevWeight.current = set.weight;
-    }
-  }, [set.weight]);
+  if (set.reps !== repsLocal.fromProp) {
+    setRepsLocal({ str: set.reps === 0 ? '' : String(set.reps), fromProp: set.reps });
+  }
+  if (set.weight !== weightLocal.fromProp) {
+    setWeightLocal({ str: set.weight === 0 ? '' : String(set.weight), fromProp: set.weight });
+  }
 
   return (
     <div>
@@ -778,13 +646,13 @@ function SetRow({ set, onRepsChange, onWeightChange, onToggle, onNotesChange, on
           className={`input-base text-center py-2 text-sm ${
             set.completed ? 'border-accent/60 text-accent' : ''
           }`}
-          value={repsStr}
+          value={repsLocal.str}
           onFocus={(e) => e.target.select()}
           onChange={(e) => {
             const raw = e.target.value.replace(/[^0-9]/g, '');
-            setRepsStr(raw);
-            prevReps.current = raw === '' ? 0 : parseInt(raw);
-            onRepsChange(raw === '' ? 0 : parseInt(raw));
+            const num = raw === '' ? 0 : parseInt(raw);
+            setRepsLocal({ str: raw, fromProp: num });
+            onRepsChange(num);
           }}
         />
 
@@ -796,13 +664,12 @@ function SetRow({ set, onRepsChange, onWeightChange, onToggle, onNotesChange, on
           className={`input-base text-center py-2 text-sm ${
             set.completed ? 'border-accent/60 text-accent' : ''
           }`}
-          value={weightStr}
+          value={weightLocal.str}
           onFocus={(e) => e.target.select()}
           onChange={(e) => {
             const raw = e.target.value.replace(/[^0-9.]/g, '');
-            setWeightStr(raw);
             const num = raw === '' ? 0 : parseFloat(raw) || 0;
-            prevWeight.current = num;
+            setWeightLocal({ str: raw, fromProp: num });
             onWeightChange(num);
           }}
         />
@@ -844,6 +711,205 @@ function SetRow({ set, onRepsChange, onWeightChange, onToggle, onNotesChange, on
           autoFocus
         />
       )}
+    </div>
+  );
+}
+
+// ─── SwapModal ────────────────────────────────────────────────────────────────
+interface SwapModalProps {
+  exerciseId: string;
+  alternatives: string[];
+  getExName: (id: string) => string;
+  onClose: () => void;
+  onSwap: (altId: string) => void;
+}
+
+function SwapModal({ exerciseId, alternatives, getExName, onClose, onSwap }: SwapModalProps) {
+  const panelRef = useFocusTrap<HTMLDivElement>(true);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex flex-col justify-end"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Cambiar ejercicio"
+    >
+      <div
+        ref={panelRef}
+        className="bg-surface border-t border-border rounded-t-2xl p-5 space-y-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p className="font-pixel text-accent text-center" style={{ fontSize: '10px' }}>
+          CAMBIAR EJERCICIO
+        </p>
+        <p className="text-textMuted text-xs text-center mb-2">
+          Elegí qué hiciste hoy
+        </p>
+
+        <button
+          onClick={onClose}
+          className="w-full flex items-center justify-between p-3 rounded-xl border border-accent bg-accent/10 text-accent text-sm"
+        >
+          <span>{getExName(exerciseId)}</span>
+          <Check size={16} aria-hidden="true" />
+        </button>
+
+        {alternatives.map((altId) => (
+          <button
+            key={altId}
+            onClick={() => onSwap(altId)}
+            className="w-full flex items-center p-3 rounded-xl border border-border bg-surface2 text-textPrimary text-sm text-left"
+          >
+            <Shuffle size={14} className="text-accent mr-2 flex-shrink-0" aria-hidden="true" />
+            {getExName(altId)}
+          </button>
+        ))}
+
+        <button
+          onClick={onClose}
+          className="w-full text-textMuted text-xs py-2"
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── ExtraExerciseModal ───────────────────────────────────────────────────────
+interface ExtraExerciseModalProps {
+  muscle: MuscleGroup;
+  setMuscle: (m: MuscleGroup) => void;
+  exerciseId: string;
+  setExerciseId: (id: string) => void;
+  sets: string;
+  setSets: (v: string) => void;
+  reps: string;
+  setReps: (v: string) => void;
+  weight: string;
+  setWeight: (v: string) => void;
+  options: Exercise[];
+  onClose: () => void;
+  onConfirm: () => void;
+}
+
+function ExtraExerciseModal({
+  muscle, setMuscle, exerciseId, setExerciseId,
+  sets, setSets, reps, setReps, weight, setWeight,
+  options, onClose, onConfirm,
+}: ExtraExerciseModalProps) {
+  const panelRef = useFocusTrap<HTMLDivElement>(true);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex flex-col justify-end"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Agregar ejercicio extra"
+    >
+      <div
+        ref={panelRef}
+        className="bg-surface border-t border-border rounded-t-2xl p-5 space-y-3 max-h-[80vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p className="font-pixel text-accent text-center" style={{ fontSize: '10px' }}>
+          EJERCICIO EXTRA
+        </p>
+        <p className="text-textMuted text-xs text-center">
+          Se suma a esta sesión sin modificar tu rutina
+        </p>
+
+        <div>
+          <label className="text-xs text-textMuted mb-1 block">Grupo muscular</label>
+          <select
+            className="input-base"
+            value={muscle}
+            onChange={(e) => setMuscle(e.target.value as MuscleGroup)}
+          >
+            {MUSCLE_GROUP_ORDER.map((mg) => (
+              <option key={mg} value={mg}>{MUSCLE_GROUP_LABELS[mg]}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="text-xs text-textMuted mb-1 block">Ejercicio</label>
+          <select
+            className="input-base"
+            value={exerciseId}
+            onChange={(e) => setExerciseId(e.target.value)}
+          >
+            <option value="">— Seleccioná un ejercicio —</option>
+            {options.map((ex) => (
+              <option key={ex.id} value={ex.id}>{ex.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <label className="text-xs text-textMuted mb-1 block">Series</label>
+            <input
+              type="number" min="1" max="20"
+              className="input-base text-center"
+              value={sets}
+              onChange={(e) => setSets(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-textMuted mb-1 block">Reps</label>
+            <input
+              type="number" min="1" max="100"
+              className="input-base text-center"
+              value={reps}
+              onChange={(e) => setReps(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-textMuted mb-1 block">Peso (kg)</label>
+            <input
+              type="number" min="0" step="0.5"
+              className="input-base text-center"
+              value={weight}
+              onChange={(e) => setWeight(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <button
+          onClick={onConfirm}
+          disabled={!exerciseId}
+          className="w-full bg-accent text-background font-pixel py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95 transition-transform"
+          style={{ fontSize: '9px' }}
+        >
+          <Plus size={14} aria-hidden="true" />
+          AGREGAR A LA SESIÓN
+        </button>
+        <button
+          onClick={onClose}
+          className="w-full text-textMuted text-xs py-2"
+        >
+          Cancelar
+        </button>
+      </div>
     </div>
   );
 }

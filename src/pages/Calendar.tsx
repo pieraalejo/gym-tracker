@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Play, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Play, X, CalendarDays } from 'lucide-react';
 import { useGymStore } from '../store/gymStore';
 import type { WeekDay } from '../types';
 
@@ -73,6 +73,31 @@ const Calendar: React.FC = () => {
   const adherence = totalPlannedThisMonth > 0
     ? Math.round((completedThisMonth / totalPlannedThisMonth) * 100)
     : null;
+
+  if (routines.length === 0) {
+    return (
+      <div className="p-4 max-w-lg mx-auto">
+        <div className="card flex flex-col items-center py-12 gap-4 text-center">
+          <CalendarDays size={48} className="text-textMuted" aria-hidden="true" />
+          <div>
+            <p className="font-pixel text-textMuted" style={{ fontSize: '10px' }}>
+              SIN RUTINAS
+            </p>
+            <p className="text-textMuted text-sm mt-2">
+              Creá una rutina para empezar a planificar tu semana
+            </p>
+          </div>
+          <button
+            onClick={() => navigate('/rutinas')}
+            className="bg-accent text-background font-pixel px-5 py-2 rounded-lg active:scale-95 transition-transform"
+            style={{ fontSize: '9px' }}
+          >
+            CREAR RUTINA
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 max-w-lg mx-auto">

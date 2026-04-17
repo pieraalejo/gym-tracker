@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Routines from './pages/Routines';
 import WorkoutLogger from './pages/WorkoutLogger';
 import Onboarding from './pages/Onboarding';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { useGymStore } from './store/gymStore';
 import { supabase } from './lib/supabase';
 
@@ -67,21 +68,25 @@ function App() {
   }
 
   return (
-    <BrowserRouter>
-      <Layout>
-        <Suspense fallback={<PageFallback />}>
-          <Routes>
-            <Route path="/"            element={<Dashboard />} />
-            <Route path="/rutinas"     element={<Routines />} />
-            <Route path="/entrenar"    element={<WorkoutLogger />} />
-            <Route path="/calendario"  element={<Calendar />} />
-            <Route path="/metricas"    element={<Metrics />} />
-            <Route path="/perfil"      element={<Profile />} />
-            <Route path="/bears"       element={<BearPreview />} />
-          </Routes>
-        </Suspense>
-      </Layout>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <Layout>
+          <ErrorBoundary>
+            <Suspense fallback={<PageFallback />}>
+              <Routes>
+                <Route path="/"            element={<Dashboard />} />
+                <Route path="/rutinas"     element={<Routines />} />
+                <Route path="/entrenar"    element={<WorkoutLogger />} />
+                <Route path="/calendario"  element={<Calendar />} />
+                <Route path="/metricas"    element={<Metrics />} />
+                <Route path="/perfil"      element={<Profile />} />
+                <Route path="/bears"       element={<BearPreview />} />
+              </Routes>
+            </Suspense>
+          </ErrorBoundary>
+        </Layout>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 

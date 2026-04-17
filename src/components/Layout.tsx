@@ -2,12 +2,14 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { Home, ListChecks, Dumbbell, BarChart2, CalendarDays, User } from 'lucide-react';
 import { useGymStore } from '../store/gymStore';
+import { SyncErrorBanner } from './SyncErrorBanner';
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const activeWorkout = useGymStore((s) => s.activeWorkout);
 
   return (
     <div className="flex flex-col min-h-screen bg-background text-textPrimary">
+      <SyncErrorBanner />
 
       <main className="flex-1 overflow-auto pb-20">{children}</main>
 

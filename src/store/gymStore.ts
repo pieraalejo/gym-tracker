@@ -30,8 +30,15 @@ import {
 
 const genId = (): string => crypto.randomUUID();
 
+const PERSIST_VERSION = 1;
+
 function sync(fn: () => Promise<void>) {
-  fn().catch((err) => console.error('[Supabase sync error]', err));
+  fn().catch((err) => {
+    console.error('[Supabase sync error]', err);
+    const message =
+      err instanceof Error ? err.message : 'No se pudo sincronizar con el servidor';
+    useGymStore.setState({ syncError: message });
+  });
 }
 
 interface GymStore {
@@ -40,6 +47,10 @@ interface GymStore {
   isLoading: boolean;
   loadUserData: (userId: string) => Promise<void>;
   resetStore: () => void;
+
+  // Sync errors
+  syncError: string | null;
+  clearSyncError: () => void;
 
   // Profile
   userProfile: UserProfile | null;
@@ -96,6 +107,9 @@ export const useGymStore = create<GymStore>()(
     (set, get) => ({
       userId: null,
       isLoading: false,
+      syncError: null,
+
+      clearSyncError: () => set({ syncError: null }),
 
       loadUserData: async (userId: string) => {
         set({ isLoading: true, userId });
@@ -417,6 +431,17 @@ export const useGymStore = create<GymStore>()(
     }),
     {
       name: 'gym-tracker-v3',
+      version: PERSIST_VERSION,
+      migrate: (persisted, version) => {
+        if (version !== PERSIST_VERSION) {
+          return {
+            activeWorkout: null,
+            restTimerDuration: 180,
+            exercises: DEFAULT_EXERCISES,
+          };
+        }
+        return persisted as { activeWorkout: ActiveWorkout | null; restTimerDuration: number; exercises: Exercise[] };
+      },
       // Only persist active workout and local preferences
       partialize: (state) => ({
         activeWorkout: state.activeWorkout,
