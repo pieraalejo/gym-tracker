@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Play, X } from 'lucide-react';
 import { useGymStore } from '../store/gymStore';
@@ -16,17 +16,23 @@ const Calendar: React.FC = () => {
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
-  const { routines, workoutLogs, weeklyPlan, setDayRoutine } = useGymStore();
+  const routines = useGymStore((s) => s.routines);
+  const workoutLogs = useGymStore((s) => s.workoutLogs);
+  const weeklyPlan = useGymStore((s) => s.weeklyPlan);
+  const setDayRoutine = useGymStore((s) => s.setDayRoutine);
   const navigate = useNavigate();
 
   const firstDayOfMonth = new Date(viewYear, viewMonth, 1).getDay();
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
 
   // Date string -> routineId para entrenamientos completados
-  const completedByDate: Record<string, string> = {};
-  workoutLogs.forEach((log) => {
-    if (log.completed) completedByDate[log.date] = log.routineId;
-  });
+  const completedByDate = useMemo(() => {
+    const map: Record<string, string> = {};
+    workoutLogs.forEach((log) => {
+      if (log.completed) map[log.date] = log.routineId;
+    });
+    return map;
+  }, [workoutLogs]);
 
   const prevMonth = () => {
     if (viewMonth === 0) { setViewMonth(11); setViewYear((y) => y - 1); }

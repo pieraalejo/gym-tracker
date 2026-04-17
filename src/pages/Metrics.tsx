@@ -44,8 +44,17 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function Metrics() {
-  const { workoutLogs, exercises, routines, bodyMeasurements, addBodyMeasurement, deleteBodyMeasurement, userProfile } = useGymStore();
-  const allExercises = [...DEFAULT_EXERCISES, ...exercises.filter((e) => e.isCustom)];
+  const workoutLogs = useGymStore((s) => s.workoutLogs);
+  const exercises = useGymStore((s) => s.exercises);
+  const routines = useGymStore((s) => s.routines);
+  const bodyMeasurements = useGymStore((s) => s.bodyMeasurements);
+  const addBodyMeasurement = useGymStore((s) => s.addBodyMeasurement);
+  const deleteBodyMeasurement = useGymStore((s) => s.deleteBodyMeasurement);
+  const userProfile = useGymStore((s) => s.userProfile);
+  const allExercises = useMemo(
+    () => [...DEFAULT_EXERCISES, ...exercises.filter((e) => e.isCustom)],
+    [exercises]
+  );
 
   const [tab, setTab] = useState<Tab>('graficas');
 

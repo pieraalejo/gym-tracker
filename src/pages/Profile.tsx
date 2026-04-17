@@ -31,15 +31,13 @@ function formatDate(dateStr: string): string {
 }
 
 export default function Profile() {
-  const {
-    userProfile,
-    updateUserProfile,
-    workoutLogs,
-    routines,
-    activeWorkout,
-    bodyMeasurements,
-    addBodyMeasurement,
-  } = useGymStore();
+  const userProfile = useGymStore((s) => s.userProfile);
+  const updateUserProfile = useGymStore((s) => s.updateUserProfile);
+  const workoutLogs = useGymStore((s) => s.workoutLogs);
+  const routines = useGymStore((s) => s.routines);
+  const activeWorkout = useGymStore((s) => s.activeWorkout);
+  const bodyMeasurements = useGymStore((s) => s.bodyMeasurements);
+  const addBodyMeasurement = useGymStore((s) => s.addBodyMeasurement);
 
   const bearState = getBearState(workoutLogs, activeWorkout, routines);
   const streak = getCurrentStreak(workoutLogs);

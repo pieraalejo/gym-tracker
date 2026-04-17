@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Plus, Trash2, ChevronDown, ChevronUp, Edit2, X, Check, Shuffle,
 } from 'lucide-react';
@@ -44,7 +44,11 @@ const DAY_TYPE_GROUPS: { label: string; types: DayType[] }[] = [
 ];
 
 export default function Routines() {
-  const { routines, exercises, addRoutine, updateRoutine, deleteRoutine } = useGymStore();
+  const routines = useGymStore((s) => s.routines);
+  const exercises = useGymStore((s) => s.exercises);
+  const addRoutine = useGymStore((s) => s.addRoutine);
+  const updateRoutine = useGymStore((s) => s.updateRoutine);
+  const deleteRoutine = useGymStore((s) => s.deleteRoutine);
 
   const [view, setView] = useState<View>('list');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -66,9 +70,18 @@ export default function Routines() {
   const [altPickExercise, setAltPickExercise] = useState<string>('');
 
   // All exercises (default + custom)
-  const allExercises = [...DEFAULT_EXERCISES, ...exercises.filter((e) => e.isCustom)];
-  const filteredExercises = allExercises.filter((e) => e.muscleGroup === pickMuscle);
-  const altFilteredExercises = allExercises.filter((e) => e.muscleGroup === altPickMuscle);
+  const allExercises = useMemo(
+    () => [...DEFAULT_EXERCISES, ...exercises.filter((e) => e.isCustom)],
+    [exercises]
+  );
+  const filteredExercises = useMemo(
+    () => allExercises.filter((e) => e.muscleGroup === pickMuscle),
+    [allExercises, pickMuscle]
+  );
+  const altFilteredExercises = useMemo(
+    () => allExercises.filter((e) => e.muscleGroup === altPickMuscle),
+    [allExercises, altPickMuscle]
+  );
 
   function openCreate() {
     setForm(EMPTY_FORM);

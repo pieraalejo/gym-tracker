@@ -39,7 +39,10 @@ function getDuration(start?: string, end?: string): string {
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { workoutLogs, routines, activeWorkout, userProfile } = useGymStore();
+  const workoutLogs = useGymStore((s) => s.workoutLogs);
+  const routines = useGymStore((s) => s.routines);
+  const activeWorkout = useGymStore((s) => s.activeWorkout);
+  const userProfile = useGymStore((s) => s.userProfile);
 
   const bearState = getBearState(workoutLogs, activeWorkout, routines);
   const days      = getDaysSinceLastWorkout(workoutLogs);
