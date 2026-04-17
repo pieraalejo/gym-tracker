@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Check, X, Plus, Minus, ChevronDown, ChevronUp, Dumbbell, Flag, MessageSquare, Shuffle,
@@ -21,16 +21,24 @@ export default function WorkoutLogger() {
   const location = useLocation();
   void location;
 
-  const {
-    routines, exercises, activeWorkout,
-    startWorkout, updateActiveSet, updateActiveExercise,
-    addSetToActiveExercise, removeSetFromActiveExercise,
-    addExerciseToActiveWorkout, swapActiveExercise,
-    finishWorkout, cancelWorkout,
-    restTimerDuration,
-  } = useGymStore();
+  const routines = useGymStore((s) => s.routines);
+  const exercises = useGymStore((s) => s.exercises);
+  const activeWorkout = useGymStore((s) => s.activeWorkout);
+  const restTimerDuration = useGymStore((s) => s.restTimerDuration);
+  const startWorkout = useGymStore((s) => s.startWorkout);
+  const updateActiveSet = useGymStore((s) => s.updateActiveSet);
+  const updateActiveExercise = useGymStore((s) => s.updateActiveExercise);
+  const addSetToActiveExercise = useGymStore((s) => s.addSetToActiveExercise);
+  const removeSetFromActiveExercise = useGymStore((s) => s.removeSetFromActiveExercise);
+  const addExerciseToActiveWorkout = useGymStore((s) => s.addExerciseToActiveWorkout);
+  const swapActiveExercise = useGymStore((s) => s.swapActiveExercise);
+  const finishWorkout = useGymStore((s) => s.finishWorkout);
+  const cancelWorkout = useGymStore((s) => s.cancelWorkout);
 
-  const allExercises = [...DEFAULT_EXERCISES, ...exercises.filter((e) => e.isCustom)];
+  const allExercises = useMemo(
+    () => [...DEFAULT_EXERCISES, ...exercises.filter((e) => e.isCustom)],
+    [exercises]
+  );
 
   const [phase, setPhase] = useState<Phase>(activeWorkout ? 'workout' : 'select');
   const [expandedEx, setExpandedEx] = useState<string | null>(null);
@@ -146,10 +154,26 @@ export default function WorkoutLogger() {
   }
 
   // Ejercicios extra filtrados (no están ya en el workout)
-  const extraFiltered = allExercises.filter(
-    (e) => e.muscleGroup === extraMuscle &&
-      !activeWorkout?.exercises.some((ae) => ae.exerciseId === e.id)
+  const extraFiltered = useMemo(
+    () =>
+      allExercises.filter(
+        (e) => e.muscleGroup === extraMuscle &&
+          !activeWorkout?.exercises.some((ae) => ae.exerciseId === e.id)
+      ),
+    [allExercises, extraMuscle, activeWorkout]
   );
+
+  // Cerrar modales con Escape
+  useEffect(() => {
+    if (!swapForExId && !showExtraModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (swapForExId) setSwapForExId(null);
+      else if (showExtraModal) setShowExtraModal(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [swapForExId, showExtraModal]);
 
   // ── SELECT PHASE ──────────────────────────────────────────────────────────
   if (phase === 'select') {
@@ -332,6 +356,9 @@ export default function WorkoutLogger() {
           <div
             className="fixed inset-0 z-50 flex flex-col justify-end"
             onClick={() => setSwapForExId(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Cambiar ejercicio"
           >
             <div
               className="bg-surface border-t border-border rounded-t-2xl p-5 space-y-3"
@@ -385,6 +412,9 @@ export default function WorkoutLogger() {
         <div
           className="fixed inset-0 z-50 flex flex-col justify-end"
           onClick={() => setShowExtraModal(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Agregar ejercicio extra"
         >
           <div
             className="bg-surface border-t border-border rounded-t-2xl p-5 space-y-3 max-h-[80vh] overflow-y-auto"
@@ -489,6 +519,7 @@ export default function WorkoutLogger() {
             <button
               onClick={handleCancel}
               className="p-2 text-textMuted hover:text-danger transition-colors"
+              aria-label="Cancelar entreno"
             >
               <X size={18} />
             </button>
@@ -572,6 +603,7 @@ export default function WorkoutLogger() {
                       }}
                       className="p-1.5 text-accent/70 hover:text-accent transition-colors"
                       title="Cambiar por alternativa"
+                      aria-label={`Cambiar ${getExName(exLog.exerciseId)} por alternativa`}
                     >
                       <Shuffle size={15} />
                     </button>
@@ -725,7 +757,11 @@ function SetRow({ set, onRepsChange, onWeightChange, onToggle, onNotesChange, on
         {/* Set number / remove */}
         <div className="text-center">
           {onRemove ? (
-            <button onClick={onRemove} className="text-textMuted hover:text-danger transition-colors">
+            <button
+              onClick={onRemove}
+              className="text-textMuted hover:text-danger transition-colors"
+              aria-label={`Eliminar serie ${set.setNumber}`}
+            >
               <Minus size={14} />
             </button>
           ) : (
@@ -738,6 +774,7 @@ function SetRow({ set, onRepsChange, onWeightChange, onToggle, onNotesChange, on
           type="text"
           inputMode="numeric"
           pattern="[0-9]*"
+          aria-label={`Repeticiones, serie ${set.setNumber}`}
           className={`input-base text-center py-2 text-sm ${
             set.completed ? 'border-accent/60 text-accent' : ''
           }`}
@@ -755,6 +792,7 @@ function SetRow({ set, onRepsChange, onWeightChange, onToggle, onNotesChange, on
         <input
           type="text"
           inputMode="decimal"
+          aria-label={`Peso en kilos, serie ${set.setNumber}`}
           className={`input-base text-center py-2 text-sm ${
             set.completed ? 'border-accent/60 text-accent' : ''
           }`}
@@ -772,6 +810,8 @@ function SetRow({ set, onRepsChange, onWeightChange, onToggle, onNotesChange, on
         {/* Complete toggle */}
         <button
           onClick={onToggle}
+          aria-label={set.completed ? `Marcar serie ${set.setNumber} como pendiente` : `Marcar serie ${set.setNumber} como completada`}
+          aria-pressed={set.completed}
           className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all active:scale-90 ${
             set.completed
               ? 'bg-accent text-background'
@@ -784,6 +824,8 @@ function SetRow({ set, onRepsChange, onWeightChange, onToggle, onNotesChange, on
         {/* Note toggle */}
         <button
           onClick={() => setShowNote((v) => !v)}
+          aria-label={`Nota de la serie ${set.setNumber}`}
+          aria-expanded={showNote}
           className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${
             set.notes ? 'text-accent' : 'text-textMuted hover:text-textPrimary'
           }`}
