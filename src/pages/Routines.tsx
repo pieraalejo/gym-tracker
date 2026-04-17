@@ -139,6 +139,16 @@ export default function Routines() {
     }));
   }
 
+  function moveExercise(idx: number, dir: -1 | 1) {
+    setForm((f) => {
+      const exs = [...f.exercises];
+      const target = idx + dir;
+      if (target < 0 || target >= exs.length) return f;
+      [exs[idx], exs[target]] = [exs[target], exs[idx]];
+      return { ...f, exercises: exs };
+    });
+  }
+
   function updateExerciseInForm(exerciseId: string, field: keyof RoutineExercise, value: number) {
     setForm((f) => ({
       ...f,
@@ -487,7 +497,23 @@ export default function Routines() {
             <div className="space-y-3">
               {form.exercises.map((re, idx) => (
                 <div key={re.exerciseId} className="card flex items-start gap-3">
-                  <span className="text-textMuted text-xs mt-1 w-5">{idx + 1}.</span>
+                  <div className="flex flex-col items-center gap-0.5 mt-0.5">
+                    <button
+                      onClick={() => moveExercise(idx, -1)}
+                      disabled={idx === 0}
+                      className="text-textMuted hover:text-accent disabled:opacity-20 transition-colors"
+                    >
+                      <ChevronUp size={14} />
+                    </button>
+                    <span className="text-textMuted text-xs w-4 text-center">{idx + 1}</span>
+                    <button
+                      onClick={() => moveExercise(idx, 1)}
+                      disabled={idx === form.exercises.length - 1}
+                      className="text-textMuted hover:text-accent disabled:opacity-20 transition-colors"
+                    >
+                      <ChevronDown size={14} />
+                    </button>
+                  </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-textPrimary text-sm font-medium truncate">
                       {getExName(re.exerciseId)}
