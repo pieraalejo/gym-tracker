@@ -1,5 +1,30 @@
 import type { Exercise, MuscleGroup, DayType } from '../types';
 
+export function isCardio(muscleGroup: MuscleGroup | undefined): boolean {
+  return muscleGroup === 'cardio';
+}
+
+export function secToMmss(s: number): string {
+  if (!s || s <= 0) return '';
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2, '0')}`;
+}
+
+// Accepts "mm:ss", "m:s", or a bare number (interpreted as minutes).
+export function mmssToSec(str: string): number {
+  const trimmed = str.trim();
+  if (!trimmed) return 0;
+  if (trimmed.includes(':')) {
+    const [m, s] = trimmed.split(':');
+    const mins = parseInt(m, 10) || 0;
+    const secs = parseInt(s, 10) || 0;
+    return mins * 60 + Math.min(secs, 59);
+  }
+  const n = parseInt(trimmed, 10) || 0;
+  return n * 60;
+}
+
 export const DEFAULT_EXERCISES: Exercise[] = [
   // PECHO
   { id: 'pe001', name: 'Press de banca plano con barra', muscleGroup: 'pecho', isCustom: false },

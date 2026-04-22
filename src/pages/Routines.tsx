@@ -9,6 +9,9 @@ import {
   DAY_TYPE_LABELS,
   DAY_TYPE_COLORS,
   DEFAULT_EXERCISES,
+  isCardio,
+  secToMmss,
+  mmssToSec,
 } from '../data/exercises';
 import type { DayType, MuscleGroup, RoutineExercise } from '../types';
 
@@ -61,6 +64,7 @@ export default function Routines() {
   const [pickSets, setPickSets] = useState('3');
   const [pickReps, setPickReps] = useState('12');
   const [pickWeight, setPickWeight] = useState('0');
+  const [pickDuration, setPickDuration] = useState('20:00');
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [customExName, setCustomExName] = useState('');
 
@@ -129,15 +133,16 @@ export default function Routines() {
     const alreadyIn = form.exercises.find((e) => e.exerciseId === exId);
     if (alreadyIn) return;
 
+    const cardio = isCardio(pickMuscle);
     setForm((f) => ({
       ...f,
       exercises: [
         ...f.exercises,
         {
           exerciseId: exId,
-          targetSets: parseInt(pickSets) || 3,
-          targetReps: parseInt(pickReps) || 12,
-          targetWeight: parseFloat(pickWeight) || 0,
+          targetSets: parseInt(pickSets) || (cardio ? 1 : 3),
+          targetReps: cardio ? mmssToSec(pickDuration) : (parseInt(pickReps) || 12),
+          targetWeight: cardio ? 0 : (parseFloat(pickWeight) || 0),
           alternatives: [],
         },
       ],
@@ -453,42 +458,69 @@ export default function Routines() {
             </div>
           )}
 
-          {/* Sets / Reps / Weight */}
-          <div className="grid grid-cols-3 gap-2">
-            <div>
-              <label className="text-xs text-textMuted mb-1 block">Series</label>
-              <input
-                type="number"
-                min="1"
-                max="20"
-                className="input-base text-center"
-                value={pickSets}
-                onChange={(e) => setPickSets(e.target.value)}
-              />
+          {/* Sets / Reps / Weight (o Duración si es cardio) */}
+          {isCardio(pickMuscle) ? (
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs text-textMuted mb-1 block">Series</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  className="input-base text-center"
+                  value={pickSets}
+                  onChange={(e) => setPickSets(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-textMuted mb-1 block">Duración (mm:ss)</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="20:00"
+                  className="input-base text-center"
+                  value={pickDuration}
+                  onChange={(e) => setPickDuration(e.target.value)}
+                />
+              </div>
             </div>
-            <div>
-              <label className="text-xs text-textMuted mb-1 block">Reps</label>
-              <input
-                type="number"
-                min="1"
-                max="100"
-                className="input-base text-center"
-                value={pickReps}
-                onChange={(e) => setPickReps(e.target.value)}
-              />
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-xs text-textMuted mb-1 block">Series</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  className="input-base text-center"
+                  value={pickSets}
+                  onChange={(e) => setPickSets(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-textMuted mb-1 block">Reps</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  className="input-base text-center"
+                  value={pickReps}
+                  onChange={(e) => setPickReps(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-textMuted mb-1 block">Peso (kg)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  className="input-base text-center"
+                  value={pickWeight}
+                  onChange={(e) => setPickWeight(e.target.value)}
+                />
+              </div>
             </div>
-            <div>
-              <label className="text-xs text-textMuted mb-1 block">Peso (kg)</label>
-              <input
-                type="number"
-                min="0"
-                step="0.5"
-                className="input-base text-center"
-                value={pickWeight}
-                onChange={(e) => setPickWeight(e.target.value)}
-              />
-            </div>
-          </div>
+          )}
 
           <button
             onClick={addExerciseToForm}
@@ -508,7 +540,10 @@ export default function Routines() {
               EJERCICIOS EN LA RUTINA ({form.exercises.length})
             </p>
             <div className="space-y-3">
-              {form.exercises.map((re, idx) => (
+              {form.exercises.map((re, idx) => {
+                const exMuscle = allExercises.find((e) => e.id === re.exerciseId)?.muscleGroup;
+                const cardio = isCardio(exMuscle);
+                return (
                 <div key={re.exerciseId} className="card flex items-start gap-3">
                   <div className="flex flex-col items-center gap-0.5 mt-0.5">
                     <button
@@ -531,27 +566,58 @@ export default function Routines() {
                     <p className="text-textPrimary text-sm font-medium truncate">
                       {getExName(re.exerciseId)}
                     </p>
-                    <div className="grid grid-cols-3 gap-2 mt-2">
-                      {[
-                        { label: 'Series', field: 'targetSets' as const, min: 1 },
-                        { label: 'Reps', field: 'targetReps' as const, min: 1 },
-                        { label: 'kg', field: 'targetWeight' as const, min: 0 },
-                      ].map(({ label, field, min }) => (
-                        <div key={field}>
-                          <label className="text-xs text-textMuted block mb-1">{label}</label>
+                    {cardio ? (
+                      <div className="grid grid-cols-2 gap-2 mt-2">
+                        <div>
+                          <label className="text-xs text-textMuted block mb-1">Series</label>
                           <input
                             type="number"
-                            min={min}
-                            step={field === 'targetWeight' ? 0.5 : 1}
+                            min={1}
+                            step={1}
                             className="input-base text-center text-sm py-1"
-                            value={re[field]}
+                            value={re.targetSets}
                             onChange={(e) =>
-                              updateExerciseInForm(re.exerciseId, field, parseFloat(e.target.value) || 0)
+                              updateExerciseInForm(re.exerciseId, 'targetSets', parseInt(e.target.value) || 1)
                             }
                           />
                         </div>
-                      ))}
-                    </div>
+                        <div>
+                          <label className="text-xs text-textMuted block mb-1">Duración (mm:ss)</label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="20:00"
+                            className="input-base text-center text-sm py-1"
+                            value={secToMmss(re.targetReps)}
+                            onChange={(e) =>
+                              updateExerciseInForm(re.exerciseId, 'targetReps', mmssToSec(e.target.value))
+                            }
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2 mt-2">
+                        {[
+                          { label: 'Series', field: 'targetSets' as const, min: 1 },
+                          { label: 'Reps', field: 'targetReps' as const, min: 1 },
+                          { label: 'kg', field: 'targetWeight' as const, min: 0 },
+                        ].map(({ label, field, min }) => (
+                          <div key={field}>
+                            <label className="text-xs text-textMuted block mb-1">{label}</label>
+                            <input
+                              type="number"
+                              min={min}
+                              step={field === 'targetWeight' ? 0.5 : 1}
+                              className="input-base text-center text-sm py-1"
+                              value={re[field]}
+                              onChange={(e) =>
+                                updateExerciseInForm(re.exerciseId, field, parseFloat(e.target.value) || 0)
+                              }
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
                     {/* Alternatives */}
                     <div className="mt-2">
@@ -642,7 +708,8 @@ export default function Routines() {
                     <X size={16} />
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

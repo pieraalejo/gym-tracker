@@ -8,6 +8,9 @@ import {
   DEFAULT_EXERCISES,
   MUSCLE_GROUP_LABELS,
   MUSCLE_GROUP_ORDER,
+  isCardio,
+  secToMmss,
+  mmssToSec,
 } from '../data/exercises';
 import { RestTimer } from '../components/RestTimer';
 import { useFocusTrap } from '../hooks/useFocusTrap';
@@ -32,6 +35,7 @@ export default function WorkoutLogger() {
   const addSetToActiveExercise = useGymStore((s) => s.addSetToActiveExercise);
   const removeSetFromActiveExercise = useGymStore((s) => s.removeSetFromActiveExercise);
   const addExerciseToActiveWorkout = useGymStore((s) => s.addExerciseToActiveWorkout);
+  const addExercise = useGymStore((s) => s.addExercise);
   const swapActiveExercise = useGymStore((s) => s.swapActiveExercise);
   const finishWorkout = useGymStore((s) => s.finishWorkout);
   const cancelWorkout = useGymStore((s) => s.cancelWorkout);
@@ -65,6 +69,9 @@ export default function WorkoutLogger() {
   const [extraSets, setExtraSets] = useState('3');
   const [extraReps, setExtraReps] = useState('12');
   const [extraWeight, setExtraWeight] = useState('0');
+  const [extraDuration, setExtraDuration] = useState('20:00');
+  const [extraShowCustom, setExtraShowCustom] = useState(false);
+  const [extraCustomName, setExtraCustomName] = useState('');
 
   // Timer
   useEffect(() => {
@@ -125,18 +132,33 @@ export default function WorkoutLogger() {
   }
 
   function handleAddExtra() {
-    if (!extraExercise) return;
+    const cardio = isCardio(extraMuscle);
+    let exId = extraExercise;
+
+    if (extraShowCustom) {
+      const name = extraCustomName.trim();
+      if (!name) return;
+      addExercise({ name, muscleGroup: extraMuscle });
+      const updated = useGymStore.getState().exercises;
+      exId = updated[updated.length - 1].id;
+    }
+
+    if (!exId) return;
+
     addExerciseToActiveWorkout(
-      extraExercise,
-      parseInt(extraSets) || 3,
-      parseInt(extraReps) || 12,
-      parseFloat(extraWeight) || 0,
+      exId,
+      parseInt(extraSets) || (cardio ? 1 : 3),
+      cardio ? mmssToSec(extraDuration) : (parseInt(extraReps) || 12),
+      cardio ? 0 : (parseFloat(extraWeight) || 0),
     );
     setShowExtraModal(false);
     setExtraExercise('');
     setExtraSets('3');
     setExtraReps('12');
     setExtraWeight('0');
+    setExtraDuration('20:00');
+    setExtraShowCustom(false);
+    setExtraCustomName('');
   }
 
   // Datos de alternativas del ejercicio actual (desde la rutina)
@@ -360,7 +382,12 @@ export default function WorkoutLogger() {
       {showExtraModal && (
         <ExtraExerciseModal
           muscle={extraMuscle}
-          setMuscle={(m) => { setExtraMuscle(m); setExtraExercise(''); }}
+          setMuscle={(m) => {
+            setExtraMuscle(m);
+            setExtraExercise('');
+            setExtraShowCustom(false);
+            setExtraCustomName('');
+          }}
           exerciseId={extraExercise}
           setExerciseId={setExtraExercise}
           sets={extraSets}
@@ -369,8 +396,18 @@ export default function WorkoutLogger() {
           setReps={setExtraReps}
           weight={extraWeight}
           setWeight={setExtraWeight}
+          duration={extraDuration}
+          setDuration={setExtraDuration}
+          showCustom={extraShowCustom}
+          setShowCustom={setExtraShowCustom}
+          customName={extraCustomName}
+          setCustomName={setExtraCustomName}
           options={extraFiltered}
-          onClose={() => setShowExtraModal(false)}
+          onClose={() => {
+            setShowExtraModal(false);
+            setExtraShowCustom(false);
+            setExtraCustomName('');
+          }}
           onConfirm={handleAddExtra}
         />
       )}
@@ -424,6 +461,8 @@ export default function WorkoutLogger() {
           const isAllDone = completedSets === totalEx && totalEx > 0;
           const alternatives = getAlternatives(exLog.exerciseId);
           const hasAlts = alternatives.length > 0;
+          const exMuscle = allExercises.find((e) => e.id === exLog.exerciseId)?.muscleGroup;
+          const cardio = isCardio(exMuscle);
 
           return (
             <div
@@ -458,8 +497,10 @@ export default function WorkoutLogger() {
                   </div>
                   <p className="text-textMuted text-xs">
                     {completedSets}/{totalEx} series
-                    {routine && ` · objetivo: ${routine.targetReps} reps`}
-                    {routine?.targetWeight && routine.targetWeight > 0 && ` @ ${routine.targetWeight}kg`}
+                    {routine && (cardio
+                      ? ` · objetivo: ${secToMmss(routine.targetReps)}`
+                      : ` · objetivo: ${routine.targetReps} reps`)}
+                    {!cardio && routine?.targetWeight && routine.targetWeight > 0 && ` @ ${routine.targetWeight}kg`}
                   </p>
                 </div>
                 <div className="flex items-center gap-1">
@@ -502,18 +543,28 @@ export default function WorkoutLogger() {
               {isExpanded && !exLog.skipped && (
                 <div className="mt-3 pt-3 border-t border-border space-y-2">
                   {/* Column headers */}
-                  <div className="grid grid-cols-[28px_1fr_1fr_36px_28px] gap-1.5 text-center">
-                    <span className="text-textMuted text-xs">SET</span>
-                    <span className="text-textMuted text-xs">REPS</span>
-                    <span className="text-textMuted text-xs">KG</span>
-                    <span className="text-textMuted text-xs">✓</span>
-                    <span className="text-textMuted text-xs"><MessageSquare size={11} className="mx-auto" /></span>
-                  </div>
+                  {cardio ? (
+                    <div className="grid grid-cols-[28px_1fr_36px_28px] gap-1.5 text-center">
+                      <span className="text-textMuted text-xs">SET</span>
+                      <span className="text-textMuted text-xs">TIEMPO</span>
+                      <span className="text-textMuted text-xs">✓</span>
+                      <span className="text-textMuted text-xs"><MessageSquare size={11} className="mx-auto" /></span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-[28px_1fr_1fr_36px_28px] gap-1.5 text-center">
+                      <span className="text-textMuted text-xs">SET</span>
+                      <span className="text-textMuted text-xs">REPS</span>
+                      <span className="text-textMuted text-xs">KG</span>
+                      <span className="text-textMuted text-xs">✓</span>
+                      <span className="text-textMuted text-xs"><MessageSquare size={11} className="mx-auto" /></span>
+                    </div>
+                  )}
 
                   {exLog.sets.map((s) => (
                     <SetRow
                       key={s.setNumber}
                       set={s}
+                      isCardio={cardio}
                       onRepsChange={(v) =>
                         updateActiveSet(exLog.exerciseId, s.setNumber, { reps: v })
                       }
@@ -588,6 +639,7 @@ export default function WorkoutLogger() {
 // ─── SetRow component ─────────────────────────────────────────────────────────
 interface SetRowProps {
   set: SetLog;
+  isCardio?: boolean;
   onRepsChange: (v: number) => void;
   onWeightChange: (v: number) => void;
   onToggle: () => void;
@@ -595,12 +647,12 @@ interface SetRowProps {
   onRemove?: () => void;
 }
 
-function SetRow({ set, onRepsChange, onWeightChange, onToggle, onNotesChange, onRemove }: SetRowProps) {
+function SetRow({ set, isCardio: cardio, onRepsChange, onWeightChange, onToggle, onNotesChange, onRemove }: SetRowProps) {
   const [showNote, setShowNote] = useState(!!set.notes);
   // Local string state so the user can clear the input (numbers can't represent ""),
   // re-derived during render when the parent's value changes from outside.
   const [repsLocal, setRepsLocal] = useState(() => ({
-    str: set.reps === 0 ? '' : String(set.reps),
+    str: cardio ? secToMmss(set.reps) : (set.reps === 0 ? '' : String(set.reps)),
     fromProp: set.reps,
   }));
   const [weightLocal, setWeightLocal] = useState(() => ({
@@ -609,16 +661,23 @@ function SetRow({ set, onRepsChange, onWeightChange, onToggle, onNotesChange, on
   }));
 
   if (set.reps !== repsLocal.fromProp) {
-    setRepsLocal({ str: set.reps === 0 ? '' : String(set.reps), fromProp: set.reps });
+    setRepsLocal({
+      str: cardio ? secToMmss(set.reps) : (set.reps === 0 ? '' : String(set.reps)),
+      fromProp: set.reps,
+    });
   }
   if (set.weight !== weightLocal.fromProp) {
     setWeightLocal({ str: set.weight === 0 ? '' : String(set.weight), fromProp: set.weight });
   }
 
+  const gridCols = cardio
+    ? 'grid-cols-[28px_1fr_36px_28px]'
+    : 'grid-cols-[28px_1fr_1fr_36px_28px]';
+
   return (
     <div>
       <div
-        className={`grid grid-cols-[28px_1fr_1fr_36px_28px] gap-1.5 items-center transition-all ${
+        className={`grid ${gridCols} gap-1.5 items-center transition-all ${
           set.completed ? 'opacity-70' : ''
         }`}
       >
@@ -637,42 +696,65 @@ function SetRow({ set, onRepsChange, onWeightChange, onToggle, onNotesChange, on
           )}
         </div>
 
-        {/* Reps */}
-        <input
-          type="text"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          aria-label={`Repeticiones, serie ${set.setNumber}`}
-          className={`input-base text-center py-2 text-sm ${
-            set.completed ? 'border-accent/60 text-accent' : ''
-          }`}
-          value={repsLocal.str}
-          onFocus={(e) => e.target.select()}
-          onChange={(e) => {
-            const raw = e.target.value.replace(/[^0-9]/g, '');
-            const num = raw === '' ? 0 : parseInt(raw);
-            setRepsLocal({ str: raw, fromProp: num });
-            onRepsChange(num);
-          }}
-        />
+        {cardio ? (
+          /* Duration (mm:ss) — stored in `reps` as total seconds */
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="mm:ss"
+            aria-label={`Duración, serie ${set.setNumber}`}
+            className={`input-base text-center py-2 text-sm ${
+              set.completed ? 'border-accent/60 text-accent' : ''
+            }`}
+            value={repsLocal.str}
+            onFocus={(e) => e.target.select()}
+            onChange={(e) => {
+              const raw = e.target.value.replace(/[^0-9:]/g, '');
+              const sec = mmssToSec(raw);
+              setRepsLocal({ str: raw, fromProp: sec });
+              onRepsChange(sec);
+            }}
+          />
+        ) : (
+          <>
+            {/* Reps */}
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              aria-label={`Repeticiones, serie ${set.setNumber}`}
+              className={`input-base text-center py-2 text-sm ${
+                set.completed ? 'border-accent/60 text-accent' : ''
+              }`}
+              value={repsLocal.str}
+              onFocus={(e) => e.target.select()}
+              onChange={(e) => {
+                const raw = e.target.value.replace(/[^0-9]/g, '');
+                const num = raw === '' ? 0 : parseInt(raw);
+                setRepsLocal({ str: raw, fromProp: num });
+                onRepsChange(num);
+              }}
+            />
 
-        {/* Weight */}
-        <input
-          type="text"
-          inputMode="decimal"
-          aria-label={`Peso en kilos, serie ${set.setNumber}`}
-          className={`input-base text-center py-2 text-sm ${
-            set.completed ? 'border-accent/60 text-accent' : ''
-          }`}
-          value={weightLocal.str}
-          onFocus={(e) => e.target.select()}
-          onChange={(e) => {
-            const raw = e.target.value.replace(/[^0-9.]/g, '');
-            const num = raw === '' ? 0 : parseFloat(raw) || 0;
-            setWeightLocal({ str: raw, fromProp: num });
-            onWeightChange(num);
-          }}
-        />
+            {/* Weight */}
+            <input
+              type="text"
+              inputMode="decimal"
+              aria-label={`Peso en kilos, serie ${set.setNumber}`}
+              className={`input-base text-center py-2 text-sm ${
+                set.completed ? 'border-accent/60 text-accent' : ''
+              }`}
+              value={weightLocal.str}
+              onFocus={(e) => e.target.select()}
+              onChange={(e) => {
+                const raw = e.target.value.replace(/[^0-9.]/g, '');
+                const num = raw === '' ? 0 : parseFloat(raw) || 0;
+                setWeightLocal({ str: raw, fromProp: num });
+                onWeightChange(num);
+              }}
+            />
+          </>
+        )}
 
         {/* Complete toggle */}
         <button
@@ -797,6 +879,12 @@ interface ExtraExerciseModalProps {
   setReps: (v: string) => void;
   weight: string;
   setWeight: (v: string) => void;
+  duration: string;
+  setDuration: (v: string) => void;
+  showCustom: boolean;
+  setShowCustom: (v: boolean) => void;
+  customName: string;
+  setCustomName: (v: string) => void;
   options: Exercise[];
   onClose: () => void;
   onConfirm: () => void;
@@ -805,9 +893,12 @@ interface ExtraExerciseModalProps {
 function ExtraExerciseModal({
   muscle, setMuscle, exerciseId, setExerciseId,
   sets, setSets, reps, setReps, weight, setWeight,
+  duration, setDuration,
+  showCustom, setShowCustom, customName, setCustomName,
   options, onClose, onConfirm,
 }: ExtraExerciseModalProps) {
   const panelRef = useFocusTrap<HTMLDivElement>(true);
+  const cardio = isCardio(muscle);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -816,6 +907,8 @@ function ExtraExerciseModal({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  const canConfirm = showCustom ? customName.trim().length > 0 : !!exerciseId;
 
   return (
     <div
@@ -850,53 +943,102 @@ function ExtraExerciseModal({
           </select>
         </div>
 
-        <div>
-          <label className="text-xs text-textMuted mb-1 block">Ejercicio</label>
-          <select
-            className="input-base"
-            value={exerciseId}
-            onChange={(e) => setExerciseId(e.target.value)}
-          >
-            <option value="">— Seleccioná un ejercicio —</option>
-            {options.map((ex) => (
-              <option key={ex.id} value={ex.id}>{ex.name}</option>
-            ))}
-          </select>
-        </div>
+        {!showCustom ? (
+          <div>
+            <label className="text-xs text-textMuted mb-1 block">Ejercicio</label>
+            <select
+              className="input-base"
+              value={exerciseId}
+              onChange={(e) => setExerciseId(e.target.value)}
+            >
+              <option value="">— Seleccioná un ejercicio —</option>
+              {options.map((ex) => (
+                <option key={ex.id} value={ex.id}>{ex.name}</option>
+              ))}
+            </select>
+            <button
+              className="text-xs text-accent mt-1.5"
+              onClick={() => { setShowCustom(true); setExerciseId(''); }}
+            >
+              + Agregar ejercicio personalizado
+            </button>
+          </div>
+        ) : (
+          <div>
+            <label className="text-xs text-textMuted mb-1 block">Nombre del ejercicio nuevo</label>
+            <input
+              className="input-base"
+              placeholder="ej: Press en máquina Smith"
+              value={customName}
+              onChange={(e) => setCustomName(e.target.value)}
+            />
+            <button
+              className="text-xs text-textMuted mt-1.5"
+              onClick={() => { setShowCustom(false); setCustomName(''); }}
+            >
+              ← Usar ejercicio de la lista
+            </button>
+          </div>
+        )}
 
-        <div className="grid grid-cols-3 gap-2">
-          <div>
-            <label className="text-xs text-textMuted mb-1 block">Series</label>
-            <input
-              type="number" min="1" max="20"
-              className="input-base text-center"
-              value={sets}
-              onChange={(e) => setSets(e.target.value)}
-            />
+        {cardio ? (
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-textMuted mb-1 block">Series</label>
+              <input
+                type="number" min="1" max="20"
+                className="input-base text-center"
+                value={sets}
+                onChange={(e) => setSets(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-textMuted mb-1 block">Duración (mm:ss)</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="20:00"
+                className="input-base text-center"
+                value={duration}
+                onChange={(e) => setDuration(e.target.value)}
+              />
+            </div>
           </div>
-          <div>
-            <label className="text-xs text-textMuted mb-1 block">Reps</label>
-            <input
-              type="number" min="1" max="100"
-              className="input-base text-center"
-              value={reps}
-              onChange={(e) => setReps(e.target.value)}
-            />
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="text-xs text-textMuted mb-1 block">Series</label>
+              <input
+                type="number" min="1" max="20"
+                className="input-base text-center"
+                value={sets}
+                onChange={(e) => setSets(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-textMuted mb-1 block">Reps</label>
+              <input
+                type="number" min="1" max="100"
+                className="input-base text-center"
+                value={reps}
+                onChange={(e) => setReps(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-textMuted mb-1 block">Peso (kg)</label>
+              <input
+                type="number" min="0" step="0.5"
+                className="input-base text-center"
+                value={weight}
+                onChange={(e) => setWeight(e.target.value)}
+              />
+            </div>
           </div>
-          <div>
-            <label className="text-xs text-textMuted mb-1 block">Peso (kg)</label>
-            <input
-              type="number" min="0" step="0.5"
-              className="input-base text-center"
-              value={weight}
-              onChange={(e) => setWeight(e.target.value)}
-            />
-          </div>
-        </div>
+        )}
 
         <button
           onClick={onConfirm}
-          disabled={!exerciseId}
+          disabled={!canConfirm}
           className="w-full bg-accent text-background font-pixel py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95 transition-transform"
           style={{ fontSize: '9px' }}
         >
