@@ -94,6 +94,7 @@ interface GymStore {
   removeSetFromActiveExercise: (exerciseId: string, setNumber: number) => void;
   addExerciseToActiveWorkout: (exerciseId: string, sets: number, reps: number, weight: number) => void;
   swapActiveExercise: (oldExerciseId: string, newExerciseId: string) => void;
+  reorderActiveExercises: (fromIndex: number, toIndex: number) => void;
   finishWorkout: (notes: string, mood?: 1 | 2 | 3 | 4 | 5) => string | null;
   cancelWorkout: () => void;
 
@@ -403,6 +404,9 @@ export const useGymStore = create<GymStore>()(
       swapActiveExercise: (oldExerciseId, newExerciseId) =>
         set((state) => {
           if (!state.activeWorkout) return state;
+          if (oldExerciseId === newExerciseId) return state;
+          // Evitar duplicados: si el nuevo ejercicio ya está en el workout, no hacer nada
+          if (state.activeWorkout.exercises.some((e) => e.exerciseId === newExerciseId)) return state;
           return {
             activeWorkout: {
               ...state.activeWorkout,
@@ -410,6 +414,23 @@ export const useGymStore = create<GymStore>()(
                 e.exerciseId === oldExerciseId ? { ...e, exerciseId: newExerciseId } : e
               ),
             },
+          };
+        }),
+
+      reorderActiveExercises: (fromIndex, toIndex) =>
+        set((state) => {
+          if (!state.activeWorkout) return state;
+          const exs = state.activeWorkout.exercises;
+          if (
+            fromIndex === toIndex ||
+            fromIndex < 0 || fromIndex >= exs.length ||
+            toIndex < 0 || toIndex >= exs.length
+          ) return state;
+          const next = [...exs];
+          const [moved] = next.splice(fromIndex, 1);
+          next.splice(toIndex, 0, moved);
+          return {
+            activeWorkout: { ...state.activeWorkout, exercises: next },
           };
         }),
 

@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  Check, X, Plus, Minus, ChevronDown, ChevronUp, Dumbbell, Flag, MessageSquare, Shuffle,
+  Check, X, Plus, Minus, ChevronDown, ChevronUp, Dumbbell, Flag, MessageSquare, Shuffle, GripVertical,
 } from 'lucide-react';
 import { useGymStore } from '../store/gymStore';
 import {
@@ -37,6 +37,7 @@ export default function WorkoutLogger() {
   const addExerciseToActiveWorkout = useGymStore((s) => s.addExerciseToActiveWorkout);
   const addExercise = useGymStore((s) => s.addExercise);
   const swapActiveExercise = useGymStore((s) => s.swapActiveExercise);
+  const reorderActiveExercises = useGymStore((s) => s.reorderActiveExercises);
   const finishWorkout = useGymStore((s) => s.finishWorkout);
   const cancelWorkout = useGymStore((s) => s.cancelWorkout);
 
@@ -61,6 +62,99 @@ export default function WorkoutLogger() {
 
   // Swap alternatives modal
   const [swapForExId, setSwapForExId] = useState<string | null>(null);
+
+  // Drag-to-reorder state
+  const itemRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
+  const dragRef = useRef<{
+    pointerId: number;
+    fromIndex: number;
+    startY: number;
+    midpoints: number[];
+  } | null>(null);
+  const [dragState, setDragState] = useState<{
+    fromIndex: number;
+    currentIndex: number;
+    translateY: number;
+    height: number;
+  } | null>(null);
+
+  function handleDragStart(e: React.PointerEvent<HTMLElement>, exerciseId: string, fromIndex: number) {
+    if (!activeWorkout) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+
+    const midpoints = activeWorkout.exercises.map((ex) => {
+      const el = itemRefs.current.get(ex.exerciseId);
+      const r = el?.getBoundingClientRect();
+      return r ? (r.top + r.bottom) / 2 : 0;
+    });
+    const myEl = itemRefs.current.get(exerciseId);
+    const myRect = myEl?.getBoundingClientRect();
+
+    dragRef.current = {
+      pointerId: e.pointerId,
+      fromIndex,
+      startY: e.clientY,
+      midpoints,
+    };
+    setDragState({
+      fromIndex,
+      currentIndex: fromIndex,
+      translateY: 0,
+      height: myRect?.height ?? 0,
+    });
+    if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(15);
+  }
+
+  function handleDragMove(e: React.PointerEvent<HTMLElement>) {
+    const drag = dragRef.current;
+    if (!drag || !dragState) return;
+    if (e.pointerId !== drag.pointerId) return;
+    e.preventDefault();
+
+    const deltaY = e.clientY - drag.startY;
+    const pointerY = e.clientY;
+
+    let newIndex = drag.midpoints.length - 1;
+    for (let i = 0; i < drag.midpoints.length; i++) {
+      if (pointerY < drag.midpoints[i]) {
+        newIndex = i;
+        break;
+      }
+    }
+
+    if (newIndex !== dragState.currentIndex || deltaY !== dragState.translateY) {
+      setDragState({ ...dragState, currentIndex: newIndex, translateY: deltaY });
+    }
+  }
+
+  function handleDragEnd(e: React.PointerEvent<HTMLElement>) {
+    const drag = dragRef.current;
+    if (!drag || !dragState) return;
+    if (e.pointerId !== drag.pointerId) return;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+
+    if (dragState.fromIndex !== dragState.currentIndex) {
+      reorderActiveExercises(dragState.fromIndex, dragState.currentIndex);
+    }
+    dragRef.current = null;
+    setDragState(null);
+  }
+
+  function getDragTransform(index: number): string {
+    if (!dragState) return '';
+    const { fromIndex, currentIndex, translateY, height } = dragState;
+    if (index === fromIndex) return `translateY(${translateY}px)`;
+    const offset = height + 12; // card height + space-y-3 gap
+    if (currentIndex > fromIndex && index > fromIndex && index <= currentIndex) {
+      return `translateY(${-offset}px)`;
+    }
+    if (currentIndex < fromIndex && index >= currentIndex && index < fromIndex) {
+      return `translateY(${offset}px)`;
+    }
+    return '';
+  }
 
   // Extra exercise modal
   const [showExtraModal, setShowExtraModal] = useState(false);
@@ -368,6 +462,8 @@ export default function WorkoutLogger() {
         <SwapModal
           exerciseId={swapForExId}
           alternatives={getAlternatives(swapForExId)}
+          allExercises={allExercises}
+          excludeIds={activeWorkout.exercises.map((e) => e.exerciseId)}
           getExName={getExName}
           onClose={() => setSwapForExId(null)}
           onSwap={(altId) => {
@@ -459,18 +555,47 @@ export default function WorkoutLogger() {
           const completedSets = exLog.sets.filter((s) => s.completed).length;
           const totalEx = exLog.sets.length;
           const isAllDone = completedSets === totalEx && totalEx > 0;
-          const alternatives = getAlternatives(exLog.exerciseId);
-          const hasAlts = alternatives.length > 0;
           const exMuscle = allExercises.find((e) => e.id === exLog.exerciseId)?.muscleGroup;
           const cardio = isCardio(exMuscle);
+          const isDragging = dragState?.fromIndex === exIdx;
+          const dragTransform = getDragTransform(exIdx);
 
           return (
             <div
               key={exLog.exerciseId}
+              ref={(el) => {
+                if (el) itemRefs.current.set(exLog.exerciseId, el);
+                else itemRefs.current.delete(exLog.exerciseId);
+              }}
               className={`card transition-all ${exLog.skipped ? 'opacity-50' : ''} ${
                 isAllDone ? 'border-accent/40' : ''
-              } ${exLog.isExtra ? 'border-dashed border-accent/30' : ''}`}
+              } ${exLog.isExtra ? 'border-dashed border-accent/30' : ''} ${
+                isDragging ? 'shadow-2xl ring-2 ring-accent/40 relative z-50' : ''
+              }`}
+              style={{
+                transform: dragTransform || undefined,
+                transition: isDragging
+                  ? 'none'
+                  : (dragState ? 'transform 200ms ease' : undefined),
+              }}
             >
+              <div className="flex items-start gap-2">
+                {/* Drag handle (mantené apretado y arrastrá para reordenar) */}
+                <div
+                  onPointerDown={(e) => handleDragStart(e, exLog.exerciseId, exIdx)}
+                  onPointerMove={handleDragMove}
+                  onPointerUp={handleDragEnd}
+                  onPointerCancel={handleDragEnd}
+                  style={{ touchAction: 'none' }}
+                  className="flex items-center justify-center -ml-1 px-1 py-2 text-textMuted active:text-accent cursor-grab active:cursor-grabbing select-none flex-shrink-0"
+                  role="button"
+                  aria-label={`Reordenar ${getExName(exLog.exerciseId)}`}
+                  title="Mantené apretado y arrastrá para reordenar"
+                >
+                  <GripVertical size={16} />
+                </div>
+
+                <div className="flex-1 min-w-0">
               {/* Exercise header */}
               <button
                 className="w-full flex items-center gap-3"
@@ -504,20 +629,18 @@ export default function WorkoutLogger() {
                   </p>
                 </div>
                 <div className="flex items-center gap-1">
-                  {/* Botón swap si tiene alternativas */}
-                  {hasAlts && !exLog.isExtra && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSwapForExId(exLog.exerciseId);
-                      }}
-                      className="p-1.5 text-accent/70 hover:text-accent transition-colors"
-                      title="Cambiar por alternativa"
-                      aria-label={`Cambiar ${getExName(exLog.exerciseId)} por alternativa`}
-                    >
-                      <Shuffle size={15} />
-                    </button>
-                  )}
+                  {/* Botón swap — siempre disponible para cambiar por cualquier ejercicio */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSwapForExId(exLog.exerciseId);
+                    }}
+                    className="p-1.5 text-accent/70 hover:text-accent transition-colors"
+                    title="Cambiar ejercicio"
+                    aria-label={`Cambiar ${getExName(exLog.exerciseId)}`}
+                  >
+                    <Shuffle size={15} />
+                  </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -609,6 +732,8 @@ export default function WorkoutLogger() {
                   </div>
                 </div>
               )}
+                </div>
+              </div>
             </div>
           );
         })}
@@ -801,13 +926,20 @@ function SetRow({ set, isCardio: cardio, onRepsChange, onWeightChange, onToggle,
 interface SwapModalProps {
   exerciseId: string;
   alternatives: string[];
+  allExercises: Exercise[];
+  excludeIds: string[];
   getExName: (id: string) => string;
   onClose: () => void;
   onSwap: (altId: string) => void;
 }
 
-function SwapModal({ exerciseId, alternatives, getExName, onClose, onSwap }: SwapModalProps) {
+function SwapModal({
+  exerciseId, alternatives, allExercises, excludeIds, getExName, onClose, onSwap,
+}: SwapModalProps) {
   const panelRef = useFocusTrap<HTMLDivElement>(true);
+  const currentMuscle = allExercises.find((e) => e.id === exerciseId)?.muscleGroup ?? 'pecho';
+  const [pickMuscle, setPickMuscle] = useState<MuscleGroup>(currentMuscle);
+  const [pickExId, setPickExId] = useState('');
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -816,6 +948,17 @@ function SwapModal({ exerciseId, alternatives, getExName, onClose, onSwap }: Swa
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  // Lista filtrada por músculo, excluyendo el actual y los que ya están en el workout
+  const filtered = useMemo(
+    () => allExercises.filter(
+      (e) => e.muscleGroup === pickMuscle && !excludeIds.includes(e.id)
+    ),
+    [allExercises, pickMuscle, excludeIds]
+  );
+
+  // Alternativas válidas: que no estén ya en el workout
+  const validAlternatives = alternatives.filter((id) => !excludeIds.includes(id));
 
   return (
     <div
@@ -827,7 +970,7 @@ function SwapModal({ exerciseId, alternatives, getExName, onClose, onSwap }: Swa
     >
       <div
         ref={panelRef}
-        className="bg-surface border-t border-border rounded-t-2xl p-5 space-y-3"
+        className="bg-surface border-t border-border rounded-t-2xl p-5 space-y-3 max-h-[85vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <p className="font-pixel text-accent text-center" style={{ fontSize: '10px' }}>
@@ -845,16 +988,72 @@ function SwapModal({ exerciseId, alternatives, getExName, onClose, onSwap }: Swa
           <Check size={16} aria-hidden="true" />
         </button>
 
-        {alternatives.map((altId) => (
-          <button
-            key={altId}
-            onClick={() => onSwap(altId)}
-            className="w-full flex items-center p-3 rounded-xl border border-border bg-surface2 text-textPrimary text-sm text-left"
+        {validAlternatives.length > 0 && (
+          <>
+            <p className="font-pixel text-textMuted mt-2" style={{ fontSize: '8px' }}>
+              ALTERNATIVAS DE LA RUTINA
+            </p>
+            {validAlternatives.map((altId) => (
+              <button
+                key={altId}
+                onClick={() => onSwap(altId)}
+                className="w-full flex items-center p-3 rounded-xl border border-border bg-surface2 text-textPrimary text-sm text-left"
+              >
+                <Shuffle size={14} className="text-accent mr-2 flex-shrink-0" aria-hidden="true" />
+                {getExName(altId)}
+              </button>
+            ))}
+          </>
+        )}
+
+        <p className="font-pixel text-textMuted mt-2" style={{ fontSize: '8px' }}>
+          OTRO EJERCICIO
+        </p>
+
+        <div>
+          <label className="text-xs text-textMuted mb-1 block">Grupo muscular</label>
+          <select
+            className="input-base"
+            value={pickMuscle}
+            onChange={(e) => {
+              setPickMuscle(e.target.value as MuscleGroup);
+              setPickExId('');
+            }}
           >
-            <Shuffle size={14} className="text-accent mr-2 flex-shrink-0" aria-hidden="true" />
-            {getExName(altId)}
-          </button>
-        ))}
+            {MUSCLE_GROUP_ORDER.map((mg) => (
+              <option key={mg} value={mg}>{MUSCLE_GROUP_LABELS[mg]}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="text-xs text-textMuted mb-1 block">Ejercicio</label>
+          <select
+            className="input-base"
+            value={pickExId}
+            onChange={(e) => setPickExId(e.target.value)}
+          >
+            <option value="">— Seleccioná un ejercicio —</option>
+            {filtered.map((ex) => (
+              <option key={ex.id} value={ex.id}>{ex.name}</option>
+            ))}
+          </select>
+          {filtered.length === 0 && (
+            <p className="text-xs text-textMuted mt-1">
+              No hay ejercicios disponibles en este grupo
+            </p>
+          )}
+        </div>
+
+        <button
+          onClick={() => pickExId && onSwap(pickExId)}
+          disabled={!pickExId}
+          className="w-full bg-accent text-background font-pixel py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95 transition-transform"
+          style={{ fontSize: '9px' }}
+        >
+          <Shuffle size={14} aria-hidden="true" />
+          CAMBIAR A ESTE
+        </button>
 
         <button
           onClick={onClose}
