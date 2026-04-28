@@ -8,6 +8,7 @@ import type {
   ActiveWorkoutExercise,
   SetLog,
   BearState,
+  MuscleGroup,
   WeekDay,
   WeeklyPlan,
   UserProfile,
@@ -494,6 +495,20 @@ export const getDaysSinceLastWorkout = (workoutLogs: WorkoutLog[]): number | nul
   return Math.floor((today.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
 };
 
+const MUSCLE_TO_BEAR_STATE: Record<MuscleGroup, BearState> = {
+  pecho: 'workout_pecho',
+  espalda: 'workout_espalda',
+  hombros: 'workout_hombros',
+  biceps: 'workout_biceps',
+  triceps: 'workout_triceps',
+  piernas: 'workout_piernas',
+  piernas_cuadriceps: 'workout_piernas',
+  piernas_femorales: 'workout_piernas',
+  gluteos: 'workout_piernas',
+  abdomen: 'workout_abdomen',
+  cardio: 'workout_cardio',
+};
+
 export const getBearState = (
   workoutLogs: WorkoutLog[],
   activeWorkout: ActiveWorkout | null,
@@ -503,7 +518,7 @@ export const getBearState = (
     const routine = routines.find((r) => r.id === activeWorkout.routineId);
     if (routine) {
       const primary = DAY_TYPE_PRIMARY_MUSCLE[routine.dayType];
-      return `workout_${primary}` as BearState;
+      return MUSCLE_TO_BEAR_STATE[primary] ?? 'workout_pecho';
     }
     return 'workout_pecho';
   }
