@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -14,6 +14,7 @@ const Metrics = lazy(() => import('./pages/Metrics'));
 const Calendar = lazy(() => import('./pages/Calendar'));
 const Profile = lazy(() => import('./pages/Profile'));
 const BearPreview = lazy(() => import('./pages/BearPreview'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 
 function PageFallback() {
   return (
@@ -31,21 +32,38 @@ function App() {
   const userProfileName = useGymStore((s) => s.userProfile?.name);
   const [authChecked, setAuthChecked] = useState(false);
 
+  // Detect a Supabase password-recovery link (URL hash includes type=recovery)
+  // *before* the auth listener fires, so we don't briefly load the dashboard
+  // for the recovery session. Once user updates the password we clear this.
+  const isRecoveryUrl =
+    typeof window !== 'undefined' &&
+    (window.location.hash.includes('type=recovery') ||
+      window.location.search.includes('type=recovery'));
+  const [isRecovering, setIsRecovering] = useState(isRecoveryUrl);
+  const recoveringRef = useRef(isRecoveryUrl);
+
   useEffect(() => {
     // getSession() reads from local cache — nearly instant, no network needed
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
+      if (session?.user && !recoveringRef.current) {
         loadUserData(session.user.id); // fire and forget — has 8s timeout built in
       }
       setAuthChecked(true);
     });
 
-    // Listen for future auth changes (login / logout)
+    // Listen for future auth changes (login / logout / password recovery)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        if (event === 'SIGNED_IN' && session?.user) {
+        if (event === 'PASSWORD_RECOVERY') {
+          recoveringRef.current = true;
+          setIsRecovering(true);
+          return;
+        }
+        if (event === 'SIGNED_IN' && session?.user && !recoveringRef.current) {
           loadUserData(session.user.id);
         } else if (event === 'SIGNED_OUT') {
+          recoveringRef.current = false;
+          setIsRecovering(false);
           resetStore();
         }
       }
@@ -53,6 +71,28 @@ function App() {
 
     return () => subscription.unsubscribe();
   }, [loadUserData, resetStore]);
+
+  function finishRecovery() {
+    recoveringRef.current = false;
+    setIsRecovering(false);
+    // Limpiamos el hash de la URL para que un refresh no vuelva al modo recovery.
+    if (typeof window !== 'undefined' && window.location.hash) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+    // El usuario ya tiene sesión activa (la de recuperación). Cargamos sus datos.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) loadUserData(session.user.id);
+    });
+  }
+
+  // Recovery mode takes precedence over everything else.
+  if (isRecovering) {
+    return (
+      <Suspense fallback={<PageFallback />}>
+        <ResetPassword onDone={finishRecovery} />
+      </Suspense>
+    );
+  }
 
   // Show spinner while: auth unknown, OR user is authenticated but profile still loading
   if (!authChecked || (userId && !userProfileName && isLoading)) {

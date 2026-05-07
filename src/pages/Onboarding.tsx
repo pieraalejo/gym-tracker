@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { upsertProfileDb } from '../lib/db';
 import { useGymStore } from '../store/gymStore';
 
-type View = 'login' | 'signup-creds' | 'signup-profile';
+type View = 'login' | 'signup-creds' | 'signup-profile' | 'forgot';
 
 export default function Onboarding() {
   const { userId, loadUserData } = useGymStore();
@@ -26,6 +26,7 @@ export default function Onboarding() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [serverError, setServerError] = useState('');
+  const [forgotSent, setForgotSent] = useState(false);
 
   // ── LOGIN ────────────────────────────────────────────────────────────────
   async function handleLogin() {
@@ -40,6 +41,25 @@ export default function Onboarding() {
     setLoading(false);
     if (error) setServerError('Email o contraseña incorrectos');
     // onAuthStateChange in App.tsx handles the rest
+  }
+
+  // ── FORGOT PASSWORD ──────────────────────────────────────────────────────
+  async function handleForgot() {
+    const e: Record<string, string> = {};
+    if (!email.trim() || !email.includes('@')) e.email = 'Email inválido';
+    if (Object.keys(e).length) { setErrors(e); return; }
+
+    setLoading(true);
+    setServerError('');
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setLoading(false);
+    if (error) {
+      setServerError('No se pudo enviar el email. Probá de nuevo.');
+      return;
+    }
+    setForgotSent(true);
   }
 
   // ── SIGNUP step 1 → step 2 ───────────────────────────────────────────────
@@ -151,11 +171,62 @@ export default function Onboarding() {
               {loading ? 'CARGANDO...' : 'ENTRAR'}
             </button>
 
+            <button
+              onClick={() => { setErrors({}); setServerError(''); setForgotSent(false); setView('forgot'); }}
+              className="w-full text-textMuted text-xs text-center pt-1 underline"
+            >
+              ¿Olvidaste tu contraseña?
+            </button>
+
             <p className="text-center text-textMuted text-sm pt-2">
               ¿No tenés cuenta?{' '}
               <button onClick={() => { setErrors({}); setServerError(''); setView('signup-creds'); }}
                 className="text-accent underline">Crear cuenta</button>
             </p>
+          </div>
+        )}
+
+        {/* ── FORGOT PASSWORD ── */}
+        {view === 'forgot' && (
+          <div className="space-y-4">
+            <h2 className="font-pixel text-textPrimary mb-1" style={{ fontSize: '12px' }}>
+              RECUPERAR CONTRASEÑA
+            </h2>
+            <p className="text-textMuted text-xs">
+              Ingresá tu email y te mandamos un link para crear una nueva contraseña.
+            </p>
+
+            {!forgotSent ? (
+              <>
+                <Field icon={<Mail size={16} />} label="Email" type="email"
+                  placeholder="tu@email.com" value={email} onChange={setEmail} error={errors.email} />
+
+                {serverError && <p className="text-red-400 text-xs text-center">{serverError}</p>}
+
+                <button onClick={handleForgot} disabled={loading}
+                  className="w-full bg-accent text-background font-pixel py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-transform disabled:opacity-50 mt-2"
+                  style={{ fontSize: '10px' }}>
+                  {loading ? 'ENVIANDO...' : 'ENVIAR LINK'}
+                </button>
+              </>
+            ) : (
+              <div className="card border-accent/40 bg-accent/5 text-center py-5 space-y-2">
+                <p className="text-3xl">📧</p>
+                <p className="font-pixel text-accent" style={{ fontSize: '10px' }}>
+                  EMAIL ENVIADO
+                </p>
+                <p className="text-textMuted text-sm">
+                  Revisá tu bandeja de entrada (y spam) y seguí las instrucciones del email.
+                </p>
+              </div>
+            )}
+
+            <button
+              onClick={() => { setErrors({}); setServerError(''); setForgotSent(false); setView('login'); }}
+              className="w-full text-textMuted text-xs text-center pt-2 underline"
+            >
+              ← Volver al login
+            </button>
           </div>
         )}
 
