@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  Check, X, Plus, Minus, ChevronDown, ChevronUp, Dumbbell, Flag, MessageSquare, Shuffle, GripVertical,
+  Check, X, Plus, Minus, ChevronDown, ChevronUp, Dumbbell, Flag, MessageSquare, Shuffle, GripVertical, Loader2,
 } from 'lucide-react';
 import { useGymStore } from '../store/gymStore';
 import {
@@ -59,6 +59,8 @@ export default function WorkoutLogger() {
   const [mood, setMood] = useState<1 | 2 | 3 | 4 | 5>(3);
   const [elapsed, setElapsed] = useState('');
   const [showRestTimer, setShowRestTimer] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Swap alternatives modal
   const [swapForExId, setSwapForExId] = useState<string | null>(null);
@@ -167,9 +169,9 @@ export default function WorkoutLogger() {
   const [extraShowCustom, setExtraShowCustom] = useState(false);
   const [extraCustomName, setExtraCustomName] = useState('');
 
-  // Timer
+  // Timer (skipped for past-workout entries — they use a fixed date banner)
   useEffect(() => {
-    if (phase !== 'workout' || !activeWorkout) return;
+    if (phase !== 'workout' || !activeWorkout || activeWorkout.forDate) return;
     const update = () => {
       const start = new Date(activeWorkout.startTime).getTime();
       const diff  = Date.now() - start;
@@ -205,9 +207,19 @@ export default function WorkoutLogger() {
     setExpandedEx(exs[0]?.exerciseId ?? null);
   }
 
-  function handleFinish() {
-    finishWorkout(notes, mood);
-    navigate('/');
+  async function handleFinish() {
+    if (saving) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await finishWorkout(notes, mood);
+      navigate('/');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'No se pudo guardar la sesión';
+      setSaveError(`${msg}. Tu progreso sigue acá — reintentá cuando tengas conexión.`);
+    } finally {
+      setSaving(false);
+    }
   }
 
   function handleCancel() {
@@ -418,18 +430,38 @@ export default function WorkoutLogger() {
             />
           </div>
 
+          {saveError && (
+            <div
+              role="alert"
+              className="card border-danger/40 bg-danger/10 text-danger text-sm py-3"
+            >
+              {saveError}
+            </div>
+          )}
+
           <button
             onClick={handleFinish}
-            className="w-full bg-accent text-background font-pixel py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-transform"
+            disabled={saving}
+            className="w-full bg-accent text-background font-pixel py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-transform disabled:opacity-60 disabled:active:scale-100"
             style={{ fontSize: '11px' }}
           >
-            <Flag size={16} />
-            GUARDAR SESIÓN
+            {saving ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                GUARDANDO...
+              </>
+            ) : (
+              <>
+                <Flag size={16} />
+                GUARDAR SESIÓN
+              </>
+            )}
           </button>
 
           <button
             onClick={() => setPhase('workout')}
-            className="w-full text-textMuted text-sm py-2"
+            disabled={saving}
+            className="w-full text-textMuted text-sm py-2 disabled:opacity-50"
           >
             ← Volver al entreno
           </button>
@@ -470,6 +502,11 @@ export default function WorkoutLogger() {
             swapActiveExercise(swapForExId, altId);
             setSwapForExId(null);
             if (expandedEx === swapForExId) setExpandedEx(altId);
+          }}
+          onAddCustom={(name, muscleGroup) => {
+            addExercise({ name, muscleGroup });
+            const updated = useGymStore.getState().exercises;
+            return updated[updated.length - 1].id;
           }}
         />
       )}
@@ -515,7 +552,18 @@ export default function WorkoutLogger() {
             <h1 className="font-pixel text-accent" style={{ fontSize: '11px' }}>
               {activeRoutine?.name ?? 'ENTRENANDO'}
             </h1>
-            <p className="text-textMuted text-xs mt-0.5">⏱ {elapsed}</p>
+            {activeWorkout.forDate ? (
+              <p className="text-warning text-xs mt-0.5 font-pixel" style={{ fontSize: '8px' }}>
+                📅 ENTRENO DEL{' '}
+                {new Date(`${activeWorkout.forDate}T12:00:00`).toLocaleDateString('es-AR', {
+                  weekday: 'short',
+                  day: 'numeric',
+                  month: 'short',
+                })}
+              </p>
+            ) : (
+              <p className="text-textMuted text-xs mt-0.5">⏱ {elapsed}</p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -580,14 +628,14 @@ export default function WorkoutLogger() {
               }}
             >
               <div className="flex items-start gap-2">
-                {/* Drag handle (mantené apretado y arrastrá para reordenar) */}
+                {/* Drag handle — alineado con la fila del título (h-8) */}
                 <div
                   onPointerDown={(e) => handleDragStart(e, exLog.exerciseId, exIdx)}
                   onPointerMove={handleDragMove}
                   onPointerUp={handleDragEnd}
                   onPointerCancel={handleDragEnd}
                   style={{ touchAction: 'none' }}
-                  className="flex items-center justify-center -ml-1 px-1 py-2 text-textMuted active:text-accent cursor-grab active:cursor-grabbing select-none flex-shrink-0"
+                  className="h-8 flex items-center justify-center -ml-1 px-1 text-textMuted active:text-accent cursor-grab active:cursor-grabbing select-none flex-shrink-0"
                   role="button"
                   aria-label={`Reordenar ${getExName(exLog.exerciseId)}`}
                   title="Mantené apretado y arrastrá para reordenar"
@@ -931,15 +979,18 @@ interface SwapModalProps {
   getExName: (id: string) => string;
   onClose: () => void;
   onSwap: (altId: string) => void;
+  onAddCustom: (name: string, muscleGroup: MuscleGroup) => string; // returns new id
 }
 
 function SwapModal({
-  exerciseId, alternatives, allExercises, excludeIds, getExName, onClose, onSwap,
+  exerciseId, alternatives, allExercises, excludeIds, getExName, onClose, onSwap, onAddCustom,
 }: SwapModalProps) {
   const panelRef = useFocusTrap<HTMLDivElement>(true);
   const currentMuscle = allExercises.find((e) => e.id === exerciseId)?.muscleGroup ?? 'pecho';
   const [pickMuscle, setPickMuscle] = useState<MuscleGroup>(currentMuscle);
   const [pickExId, setPickExId] = useState('');
+  const [showCustom, setShowCustom] = useState(false);
+  const [customName, setCustomName] = useState('');
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1026,28 +1077,61 @@ function SwapModal({
           </select>
         </div>
 
-        <div>
-          <label className="text-xs text-textMuted mb-1 block">Ejercicio</label>
-          <select
-            className="input-base"
-            value={pickExId}
-            onChange={(e) => setPickExId(e.target.value)}
-          >
-            <option value="">— Seleccioná un ejercicio —</option>
-            {filtered.map((ex) => (
-              <option key={ex.id} value={ex.id}>{ex.name}</option>
-            ))}
-          </select>
-          {filtered.length === 0 && (
-            <p className="text-xs text-textMuted mt-1">
-              No hay ejercicios disponibles en este grupo
-            </p>
-          )}
-        </div>
+        {!showCustom ? (
+          <div>
+            <label className="text-xs text-textMuted mb-1 block">Ejercicio</label>
+            <select
+              className="input-base"
+              value={pickExId}
+              onChange={(e) => setPickExId(e.target.value)}
+            >
+              <option value="">— Seleccioná un ejercicio —</option>
+              {filtered.map((ex) => (
+                <option key={ex.id} value={ex.id}>{ex.name}</option>
+              ))}
+            </select>
+            {filtered.length === 0 && (
+              <p className="text-xs text-textMuted mt-1">
+                No hay ejercicios disponibles en este grupo
+              </p>
+            )}
+            <button
+              className="text-xs text-accent mt-1.5"
+              onClick={() => { setShowCustom(true); setPickExId(''); }}
+            >
+              + Agregar ejercicio personalizado
+            </button>
+          </div>
+        ) : (
+          <div>
+            <label className="text-xs text-textMuted mb-1 block">Nombre del ejercicio nuevo</label>
+            <input
+              className="input-base"
+              placeholder="ej: Press en máquina Smith"
+              value={customName}
+              onChange={(e) => setCustomName(e.target.value)}
+            />
+            <button
+              className="text-xs text-textMuted mt-1.5"
+              onClick={() => { setShowCustom(false); setCustomName(''); }}
+            >
+              ← Usar ejercicio de la lista
+            </button>
+          </div>
+        )}
 
         <button
-          onClick={() => pickExId && onSwap(pickExId)}
-          disabled={!pickExId}
+          onClick={() => {
+            if (showCustom) {
+              const name = customName.trim();
+              if (!name) return;
+              const newId = onAddCustom(name, pickMuscle);
+              onSwap(newId);
+            } else if (pickExId) {
+              onSwap(pickExId);
+            }
+          }}
+          disabled={showCustom ? !customName.trim() : !pickExId}
           className="w-full bg-accent text-background font-pixel py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95 transition-transform"
           style={{ fontSize: '9px' }}
         >

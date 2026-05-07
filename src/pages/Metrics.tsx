@@ -62,6 +62,7 @@ export default function Metrics() {
   const addBodyMeasurement = useGymStore((s) => s.addBodyMeasurement);
   const deleteBodyMeasurement = useGymStore((s) => s.deleteBodyMeasurement);
   const userProfile = useGymStore((s) => s.userProfile);
+  const restDays = useGymStore((s) => s.restDays);
   const allExercises = useMemo(
     () => [...DEFAULT_EXERCISES, ...exercises.filter((e) => e.isCustom)],
     [exercises]
@@ -85,7 +86,7 @@ export default function Metrics() {
     [workoutLogs, selectedExId]
   );
 
-  const streak = getCurrentStreak(workoutLogs);
+  const streak = getCurrentStreak(workoutLogs, restDays);
 
   const weeklyVolume = useMemo(() => {
     const weeks: Record<string, number> = {};

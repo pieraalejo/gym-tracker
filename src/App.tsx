@@ -6,6 +6,7 @@ import Routines from './pages/Routines';
 import WorkoutLogger from './pages/WorkoutLogger';
 import Onboarding from './pages/Onboarding';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { AbandonedSessionGuard } from './components/AbandonedSessionGuard';
 import { useGymStore } from './store/gymStore';
 import { supabase } from './lib/supabase';
 
@@ -85,6 +86,7 @@ function App() {
             </Suspense>
           </ErrorBoundary>
         </Layout>
+        <AbandonedSessionGuard />
       </BrowserRouter>
     </ErrorBoundary>
   );

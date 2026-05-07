@@ -75,6 +75,10 @@ interface CustomExerciseRow {
   muscle_group: MuscleGroup;
 }
 
+interface RestDayRow {
+  date: string;
+}
+
 // ─── Profile ──────────────────────────────────────────────────────────────────
 
 export async function fetchProfile(userId: string): Promise<UserProfile | null> {
@@ -334,16 +338,37 @@ export async function deleteCustomExerciseDb(id: string) {
   await supabase.from('custom_exercises').delete().eq('id', id);
 }
 
+// ─── Rest days ────────────────────────────────────────────────────────────────
+
+export async function fetchRestDays(userId: string): Promise<string[]> {
+  const { data } = await supabase
+    .from('rest_days')
+    .select('date')
+    .eq('user_id', userId)
+    .returns<RestDayRow[]>();
+  if (!data) return [];
+  return data.map((r) => r.date);
+}
+
+export async function insertRestDayDb(userId: string, date: string) {
+  await supabase.from('rest_days').upsert({ user_id: userId, date });
+}
+
+export async function deleteRestDayDb(userId: string, date: string) {
+  await supabase.from('rest_days').delete().eq('user_id', userId).eq('date', date);
+}
+
 // ─── Load all user data ───────────────────────────────────────────────────────
 
 export async function loadAllUserData(userId: string) {
-  const [profile, routines, workoutLogs, bodyMeasurements, weeklyPlan, customExercises] = await Promise.all([
+  const [profile, routines, workoutLogs, bodyMeasurements, weeklyPlan, customExercises, restDays] = await Promise.all([
     fetchProfile(userId),
     fetchRoutines(userId),
     fetchWorkoutLogs(userId),
     fetchBodyMeasurements(userId),
     fetchWeeklyPlan(userId),
     fetchCustomExercises(userId),
+    fetchRestDays(userId),
   ]);
-  return { profile, routines, workoutLogs, bodyMeasurements, weeklyPlan, customExercises };
+  return { profile, routines, workoutLogs, bodyMeasurements, weeklyPlan, customExercises, restDays };
 }

@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Flame, Calendar, Dumbbell, ChevronRight, Plus } from 'lucide-react';
+import { Flame, Calendar, Dumbbell, ChevronRight, Plus, Moon, Undo2, History } from 'lucide-react';
 import BearAvatar from '../components/bear/BearAvatarV2';
 import {
   useGymStore,
@@ -8,7 +9,16 @@ import {
   getCurrentStreak,
 } from '../store/gymStore';
 import { DAY_TYPE_LABELS } from '../data/exercises';
-import type { BearState } from '../types';
+import { useFocusTrap } from '../hooks/useFocusTrap';
+import type { BearState, Routine } from '../types';
+
+const todayDateKey = (): string => new Date().toISOString().split('T')[0];
+
+function yesterdayDateKey(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().split('T')[0];
+}
 
 const BEAR_MESSAGE: Record<BearState, { title: string; sub: string }> = {
   fresh:             { title: '¡ENTRENASTE HOY!', sub: 'El oso está en su máximo poder 💪' },
@@ -43,11 +53,22 @@ export default function Dashboard() {
   const routines = useGymStore((s) => s.routines);
   const activeWorkout = useGymStore((s) => s.activeWorkout);
   const userProfile = useGymStore((s) => s.userProfile);
+  const restDays = useGymStore((s) => s.restDays);
+  const toggleRestDay = useGymStore((s) => s.toggleRestDay);
+  const startWorkout = useGymStore((s) => s.startWorkout);
 
-  const bearState = getBearState(workoutLogs, activeWorkout, routines);
+  const [showPastModal, setShowPastModal] = useState(false);
+
+  const today = todayDateKey();
+  const isRestToday = restDays.includes(today);
+  const trainedToday = workoutLogs.some((l) => l.date === today);
+
+  const bearState = getBearState(workoutLogs, activeWorkout, routines, restDays);
   const days      = getDaysSinceLastWorkout(workoutLogs);
-  const streak    = getCurrentStreak(workoutLogs);
-  const msg       = BEAR_MESSAGE[bearState];
+  const streak    = getCurrentStreak(workoutLogs, restDays);
+  const msg       = isRestToday && !activeWorkout
+    ? { title: 'DÍA DE DESCANSO', sub: 'El oso recupera fuerzas 😴 La racha sigue en pie' }
+    : BEAR_MESSAGE[bearState];
 
   const recentLogs = [...workoutLogs]
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -108,6 +129,28 @@ export default function Dashboard() {
                 ? 'Último entreno: ayer'
                 : `Último entreno: hace ${days} días`}
             </div>
+          )}
+
+          {!activeWorkout && !trainedToday && (
+            isRestToday ? (
+              <button
+                onClick={() => toggleRestDay(today)}
+                className="mt-4 bg-surface2 text-textPrimary border border-border font-pixel px-5 py-2 rounded-lg text-xs flex items-center gap-2 active:scale-95 transition-transform"
+                style={{ fontSize: '9px' }}
+              >
+                <Undo2 size={14} />
+                DESHACER DESCANSO
+              </button>
+            ) : (
+              <button
+                onClick={() => toggleRestDay(today)}
+                className="mt-4 bg-surface2 text-textPrimary border border-border font-pixel px-5 py-2 rounded-lg text-xs flex items-center gap-2 active:scale-95 transition-transform hover:border-accent/60"
+                style={{ fontSize: '9px' }}
+              >
+                <Moon size={14} className="text-accent" />
+                MARCAR HOY COMO DESCANSO
+              </button>
+            )
           )}
 
           {activeWorkout && (
@@ -192,9 +235,50 @@ export default function Dashboard() {
                     </div>
                   </button>
                 ))}
+
+                <button
+                  onClick={() => setShowPastModal(true)}
+                  className="card w-full flex items-center justify-between border-dashed border-warning/40 active:scale-95 transition-transform"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center flex-shrink-0">
+                      <History size={18} className="text-warning" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-textPrimary font-semibold text-sm">Registrar entreno pasado</p>
+                      <p className="text-textMuted text-xs">¿Te olvidaste de marcar uno?</p>
+                    </div>
+                  </div>
+                  <ChevronRight size={18} className="text-textMuted" />
+                </button>
               </div>
             )}
           </div>
+        )}
+
+        {showPastModal && (
+          <PastWorkoutModal
+            routines={routines}
+            onClose={() => setShowPastModal(false)}
+            onConfirm={(routineId, date) => {
+              const routine = routines.find((r) => r.id === routineId);
+              if (!routine) return;
+              const exs = routine.exercises.map((re) => ({
+                exerciseId: re.exerciseId,
+                skipped: false,
+                notes: '',
+                sets: Array.from({ length: re.targetSets }, (_, i) => ({
+                  setNumber: i + 1,
+                  reps: re.targetReps,
+                  weight: re.targetWeight,
+                  completed: true, // pre-marcadas: ya las hiciste
+                })),
+              }));
+              startWorkout(routineId, exs, { forDate: date });
+              setShowPastModal(false);
+              navigate('/entrenar');
+            }}
+          />
         )}
 
         {/* Recent workouts */}
@@ -260,6 +344,93 @@ function StatCard({
       <p className="font-pixel text-textMuted" style={{ fontSize: '7px' }}>
         {label}
       </p>
+    </div>
+  );
+}
+
+// ─── PastWorkoutModal ─────────────────────────────────────────────────────────
+interface PastWorkoutModalProps {
+  routines: Routine[];
+  onClose: () => void;
+  onConfirm: (routineId: string, date: string) => void;
+}
+
+function PastWorkoutModal({ routines, onClose, onConfirm }: PastWorkoutModalProps) {
+  const panelRef = useFocusTrap<HTMLDivElement>(true);
+  const [date, setDate] = useState(yesterdayDateKey());
+  const [routineId, setRoutineId] = useState(routines[0]?.id ?? '');
+
+  const today = todayDateKey();
+  const isFuture = date > today;
+  const canConfirm = !!routineId && !isFuture;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex flex-col justify-end"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="past-workout-title"
+    >
+      <div
+        ref={panelRef}
+        className="bg-surface border-t border-border rounded-t-2xl p-5 space-y-4 max-h-[85vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p id="past-workout-title" className="font-pixel text-accent text-center" style={{ fontSize: '11px' }}>
+          REGISTRAR ENTRENO PASADO
+        </p>
+        <p className="text-textMuted text-xs text-center">
+          Vas a poder editar pesos, reps y ejercicios antes de guardar
+        </p>
+
+        <div>
+          <label htmlFor="past-date" className="text-xs text-textMuted mb-1 block">
+            Fecha del entreno
+          </label>
+          <input
+            id="past-date"
+            type="date"
+            className="input-base"
+            max={today}
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
+          {isFuture && (
+            <p className="text-danger text-xs mt-1">No podés registrar un entreno en el futuro</p>
+          )}
+        </div>
+
+        <div>
+          <label htmlFor="past-routine" className="text-xs text-textMuted mb-1 block">
+            ¿Qué rutina hiciste?
+          </label>
+          <select
+            id="past-routine"
+            className="input-base"
+            value={routineId}
+            onChange={(e) => setRoutineId(e.target.value)}
+          >
+            {routines.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name} · {DAY_TYPE_LABELS[r.dayType].split('—')[0].trim()}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <button
+          onClick={() => onConfirm(routineId, date)}
+          disabled={!canConfirm}
+          className="w-full bg-accent text-background font-pixel py-3 rounded-xl active:scale-95 transition-transform disabled:opacity-40 disabled:active:scale-100"
+          style={{ fontSize: '10px' }}
+        >
+          CONTINUAR →
+        </button>
+        <button onClick={onClose} className="w-full text-textMuted text-xs py-2">
+          Cancelar
+        </button>
+      </div>
     </div>
   );
 }

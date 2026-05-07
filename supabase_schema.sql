@@ -130,3 +130,17 @@ create table if not exists weekly_plan (
 alter table weekly_plan enable row level security;
 create policy if not exists "Users can manage own weekly plan"
   on weekly_plan for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- ── Rest days ─────────────────────────────────────────────────────────────────
+-- Days the user explicitly marked as rest. Used to bridge streaks and keep the
+-- bear from getting sad on planned off-days. Composite PK prevents duplicates.
+create table if not exists rest_days (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  date date not null,
+  created_at timestamptz default now(),
+  primary key (user_id, date)
+);
+create index if not exists rest_days_user_id_idx on rest_days(user_id);
+alter table rest_days enable row level security;
+create policy if not exists "Users can manage own rest days"
+  on rest_days for all using (auth.uid() = user_id) with check (auth.uid() = user_id);

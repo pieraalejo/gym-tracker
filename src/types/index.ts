@@ -115,6 +115,10 @@ export interface ActiveWorkout {
   startTime: string;
   exercises: ActiveWorkoutExercise[];
   notes: string;
+  // If set, the session represents a past workout being registered after the
+  // fact (Dashboard → "Registrar entreno pasado"). The log will be saved with
+  // this date instead of today, and the elapsed timer is replaced by a banner.
+  forDate?: string; // YYYY-MM-DD
 }
 
 // 0=Domingo, 1=Lunes, ..., 6=Sábado

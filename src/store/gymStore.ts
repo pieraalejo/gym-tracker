@@ -27,11 +27,21 @@ import {
   upsertWeeklyPlanDayDb,
   upsertCustomExerciseDb,
   deleteCustomExerciseDb,
+  insertRestDayDb,
+  deleteRestDayDb,
 } from '../lib/db';
 
 const genId = (): string => crypto.randomUUID();
 
 const PERSIST_VERSION = 1;
+
+const todayDateKey = (): string => new Date().toISOString().split('T')[0];
+
+const dateKeyOffset = (days: number): string => {
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + days));
+  return d.toISOString().split('T')[0];
+};
 
 function sync(fn: () => Promise<void>) {
   fn().catch((err) => {
@@ -67,6 +77,10 @@ interface GymStore {
   restTimerDuration: number;
   setRestTimerDuration: (s: number) => void;
 
+  // Rest days (persisted locally; YYYY-MM-DD strings)
+  restDays: string[];
+  toggleRestDay: (date: string) => void;
+
   // Exercises
   exercises: Exercise[];
   addExercise: (exercise: Omit<Exercise, 'id' | 'isCustom'>) => void;
@@ -87,7 +101,11 @@ interface GymStore {
 
   // Active workout
   activeWorkout: ActiveWorkout | null;
-  startWorkout: (routineId: string, exercises: ActiveWorkoutExercise[]) => void;
+  startWorkout: (
+    routineId: string,
+    exercises: ActiveWorkoutExercise[],
+    opts?: { forDate?: string }
+  ) => void;
   updateActiveNote: (notes: string) => void;
   updateActiveExercise: (exerciseId: string, updates: Partial<ActiveWorkoutExercise>) => void;
   updateActiveSet: (exerciseId: string, setNumber: number, updates: Partial<SetLog>) => void;
@@ -96,7 +114,7 @@ interface GymStore {
   addExerciseToActiveWorkout: (exerciseId: string, sets: number, reps: number, weight: number) => void;
   swapActiveExercise: (oldExerciseId: string, newExerciseId: string) => void;
   reorderActiveExercises: (fromIndex: number, toIndex: number) => void;
-  finishWorkout: (notes: string, mood?: 1 | 2 | 3 | 4 | 5) => string | null;
+  finishWorkout: (notes: string, mood?: 1 | 2 | 3 | 4 | 5) => Promise<string | null>;
   cancelWorkout: () => void;
 
   // Weekly plan
@@ -120,7 +138,7 @@ export const useGymStore = create<GymStore>()(
             setTimeout(() => reject(new Error('timeout')), 25000)
           );
           const load = loadAllUserData(userId);
-          const { profile, routines, workoutLogs, bodyMeasurements, weeklyPlan, customExercises } =
+          const { profile, routines, workoutLogs, bodyMeasurements, weeklyPlan, customExercises, restDays } =
             await Promise.race([load, timeout]);
 
           // If the locally-persisted activeWorkout was already finished on another device,
@@ -136,6 +154,7 @@ export const useGymStore = create<GymStore>()(
             workoutLogs,
             bodyMeasurements,
             weeklyPlan,
+            restDays,
             // Supabase is authoritative for custom exercises — always replace local ones
             exercises: [...DEFAULT_EXERCISES, ...customExercises],
             isLoading: false,
@@ -155,6 +174,7 @@ export const useGymStore = create<GymStore>()(
           workoutLogs: [],
           bodyMeasurements: [],
           weeklyPlan: {},
+          restDays: [],
           activeWorkout: null,
           isLoading: false,
           // exercises are NOT reset so custom exercises survive logout/login
@@ -196,6 +216,21 @@ export const useGymStore = create<GymStore>()(
       // ── Rest timer ────────────────────────────────────────────────────────
       restTimerDuration: 180,
       setRestTimerDuration: (s) => set({ restTimerDuration: s }),
+
+      // ── Rest days ─────────────────────────────────────────────────────────
+      restDays: [],
+      toggleRestDay: (date) => {
+        const has = get().restDays.includes(date);
+        set((state) => ({
+          restDays: has
+            ? state.restDays.filter((d) => d !== date)
+            : [...state.restDays, date],
+        }));
+        const userId = get().userId;
+        if (userId) {
+          sync(() => (has ? deleteRestDayDb(userId, date) : insertRestDayDb(userId, date)));
+        }
+      },
 
       // ── Exercises ─────────────────────────────────────────────────────────
       exercises: DEFAULT_EXERCISES,
@@ -272,13 +307,14 @@ export const useGymStore = create<GymStore>()(
       // ── Active workout ────────────────────────────────────────────────────
       activeWorkout: null,
 
-      startWorkout: (routineId, exercises) =>
+      startWorkout: (routineId, exercises, opts) =>
         set({
           activeWorkout: {
             routineId,
             startTime: new Date().toISOString(),
             exercises,
             notes: '',
+            ...(opts?.forDate ? { forDate: opts.forDate } : {}),
           },
         }),
 
@@ -356,24 +392,38 @@ export const useGymStore = create<GymStore>()(
           };
         }),
 
-      finishWorkout: (notes, mood) => {
+      finishWorkout: async (notes, mood) => {
         const { activeWorkout } = get();
         if (!activeWorkout) return null;
         const id = genId();
+        const isPast = !!activeWorkout.forDate;
         const log: WorkoutLog = {
           id,
           routineId: activeWorkout.routineId,
-          date: new Date().toISOString().split('T')[0],
+          date: activeWorkout.forDate ?? new Date().toISOString().split('T')[0],
           exercises: activeWorkout.exercises,
           completed: true,
           notes,
           mood,
-          startTime: activeWorkout.startTime,
-          endTime: new Date().toISOString(),
+          // For past entries, both timestamps are nominal — set them to the
+          // chosen date so duration logic doesn't show "-3 days".
+          startTime: isPast ? `${activeWorkout.forDate}T12:00:00.000Z` : activeWorkout.startTime,
+          endTime: isPast ? `${activeWorkout.forDate}T13:00:00.000Z` : new Date().toISOString(),
         };
-        set((state) => ({ workoutLogs: [...state.workoutLogs, log], activeWorkout: null }));
         const userId = get().userId;
-        if (userId) sync(() => syncWorkoutLogDb(userId, log));
+        // If logged in, await Supabase before clearing activeWorkout —
+        // otherwise the user could close the app mid-sync and lose the log.
+        if (userId) {
+          try {
+            await syncWorkoutLogDb(userId, log);
+          } catch (err) {
+            console.error('[finishWorkout] sync failed, keeping activeWorkout', err);
+            const message = err instanceof Error ? err.message : 'No se pudo guardar la sesión';
+            set({ syncError: message });
+            throw err;
+          }
+        }
+        set((state) => ({ workoutLogs: [...state.workoutLogs, log], activeWorkout: null }));
         return id;
       },
 
@@ -462,7 +512,11 @@ export const useGymStore = create<GymStore>()(
             exercises: DEFAULT_EXERCISES,
           };
         }
-        return persisted as { activeWorkout: ActiveWorkout | null; restTimerDuration: number; exercises: Exercise[] };
+        return persisted as {
+          activeWorkout: ActiveWorkout | null;
+          restTimerDuration: number;
+          exercises: Exercise[];
+        };
       },
       // Only persist active workout and local preferences
       partialize: (state) => ({
@@ -495,6 +549,28 @@ export const getDaysSinceLastWorkout = (workoutLogs: WorkoutLog[]): number | nul
   return Math.floor((today.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
 };
 
+// Days since the last "activity" — either a workout or a marked rest day.
+// Used to keep the bear from getting sad when the user explicitly rested.
+export const getDaysSinceLastActivity = (
+  workoutLogs: WorkoutLog[],
+  restDays: string[]
+): number | null => {
+  const dates = [
+    ...workoutLogs.map((l) => l.date),
+    ...restDays,
+  ];
+  if (dates.length === 0) return null;
+  const latest = dates.sort().at(-1)!;
+  const lastDate = new Date(latest);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  lastDate.setHours(0, 0, 0, 0);
+  return Math.floor((today.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+};
+
+export const isRestDayToday = (restDays: string[]): boolean =>
+  restDays.includes(todayDateKey());
+
 const MUSCLE_TO_BEAR_STATE: Record<MuscleGroup, BearState> = {
   pecho: 'workout_pecho',
   espalda: 'workout_espalda',
@@ -512,7 +588,8 @@ const MUSCLE_TO_BEAR_STATE: Record<MuscleGroup, BearState> = {
 export const getBearState = (
   workoutLogs: WorkoutLog[],
   activeWorkout: ActiveWorkout | null,
-  routines: Routine[]
+  routines: Routine[],
+  restDays: string[] = []
 ): BearState => {
   if (activeWorkout) {
     const routine = routines.find((r) => r.id === activeWorkout.routineId);
@@ -522,7 +599,7 @@ export const getBearState = (
     }
     return 'workout_pecho';
   }
-  const days = getDaysSinceLastWorkout(workoutLogs);
+  const days = getDaysSinceLastActivity(workoutLogs, restDays);
   if (days === null) return 'neutral';
   if (days === 0) return 'fresh';
   if (days === 1) return 'happy';
@@ -530,20 +607,25 @@ export const getBearState = (
   return 'sad';
 };
 
-export const getCurrentStreak = (workoutLogs: WorkoutLog[]): number => {
-  if (workoutLogs.length === 0) return 0;
-  const uniqueDates = [...new Set(workoutLogs.map((l) => l.date))].sort(
-    (a, b) => new Date(b).getTime() - new Date(a).getTime()
-  );
+export const getCurrentStreak = (
+  workoutLogs: WorkoutLog[],
+  restDays: string[] = []
+): number => {
+  if (workoutLogs.length === 0 && restDays.length === 0) return 0;
+  const workoutSet = new Set(workoutLogs.map((l) => l.date));
+  const restSet = new Set(restDays);
+
+  // Walk back from today: workouts add to the streak, rest days act as
+  // bridges (don't add but don't break), anything else ends the streak.
+  // Allow today to be empty by starting the walk at "yesterday" if today
+  // has no activity — otherwise the streak would reset every morning.
   let streak = 0;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  for (let i = 0; i < uniqueDates.length; i++) {
-    const d = new Date(uniqueDates[i]);
-    d.setHours(0, 0, 0, 0);
-    const expected = new Date(today);
-    expected.setDate(today.getDate() - i);
-    if (d.getTime() === expected.getTime()) streak++;
+  let i = 0;
+  if (!workoutSet.has(todayDateKey()) && !restSet.has(todayDateKey())) i = 1;
+  for (; i < 3650; i++) {
+    const key = dateKeyOffset(-i);
+    if (workoutSet.has(key)) streak++;
+    else if (restSet.has(key)) continue;
     else break;
   }
   return streak;

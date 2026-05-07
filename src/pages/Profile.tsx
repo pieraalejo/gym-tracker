@@ -38,9 +38,10 @@ export default function Profile() {
   const activeWorkout = useGymStore((s) => s.activeWorkout);
   const bodyMeasurements = useGymStore((s) => s.bodyMeasurements);
   const addBodyMeasurement = useGymStore((s) => s.addBodyMeasurement);
+  const restDays = useGymStore((s) => s.restDays);
 
-  const bearState = getBearState(workoutLogs, activeWorkout, routines);
-  const streak = getCurrentStreak(workoutLogs);
+  const bearState = getBearState(workoutLogs, activeWorkout, routines, restDays);
+  const streak = getCurrentStreak(workoutLogs, restDays);
   const daysSince = getDaysSinceLastWorkout(workoutLogs);
 
   const [editing, setEditing] = useState(false);
